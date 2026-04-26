@@ -76,8 +76,18 @@ export default async function EventsPage({ searchParams }: PageProps) {
             </TableHeader>
             <TableBody>
               {events.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className="font-medium">{event.name}</TableCell>
+                <TableRow
+                  key={event.id}
+                  className="relative cursor-pointer hover:bg-muted/50"
+                >
+                  <TableCell className="font-medium">
+                    <Link
+                      href={`/events/${event.id}`}
+                      className="after:absolute after:inset-0"
+                    >
+                      {event.name}
+                    </Link>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {event.date
                       ? new Date(event.date).toLocaleDateString(undefined, {
