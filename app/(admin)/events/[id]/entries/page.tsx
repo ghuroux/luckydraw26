@@ -55,7 +55,7 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
   ]);
   const activePackages = allPackages.filter((p) => p.isActive);
 
-  const canAdd = event.status === "OPEN" || event.status === "DRAFT";
+  const canAdd = event.status === "OPEN";
 
   return (
     <div className="space-y-4">
@@ -183,9 +183,11 @@ function EmptyState({
       <p className="mt-1 text-sm text-muted-foreground">
         {hasFilters
           ? "Try clearing the filters."
-          : status === "OPEN" || status === "DRAFT"
+          : status === "OPEN"
             ? "Click Add entry to record one."
-            : `Event is ${status.toLowerCase()} — entries can't be added.`}
+            : status === "DRAFT"
+              ? "Open the event before adding entries."
+              : `Event is ${status.toLowerCase()} — entries can't be added.`}
       </p>
     </div>
   );

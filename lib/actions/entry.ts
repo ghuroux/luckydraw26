@@ -116,11 +116,13 @@ export async function createEntry(
 
   const event = await db.event.findUnique({ where: { id: eventId } });
   if (!event) return { ok: false, error: "Event not found." };
-  if (event.status === "DRAWN") {
-    return { ok: false, error: "Cannot add entries to a drawn event." };
-  }
-  if (event.status === "CLOSED") {
-    return { ok: false, error: "Event is closed for entries." };
+  if (event.status !== "OPEN") {
+    const reason = {
+      DRAFT: "Event is still in setup — open it before adding entries.",
+      CLOSED: "Event is closed for entries.",
+      DRAWN: "Cannot add entries to a drawn event.",
+    }[event.status];
+    return { ok: false, error: reason };
   }
 
   // Resolve package + quantity.
