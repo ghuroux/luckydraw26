@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 
 export default function HomePage() {
   return (
@@ -10,7 +10,9 @@ export default function HomePage() {
           Phase 0 — scaffolding in progress.
         </p>
       </div>
-      <Button render={<Link href="/login" />}>Admin login</Button>
+      <Link href="/login" className={buttonVariants()}>
+        Admin login
+      </Link>
     </main>
   );
 }

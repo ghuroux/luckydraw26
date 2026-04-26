@@ -42,6 +42,7 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 - **Prisma is pinned to `^6.0.0`**. v7 (released late 2025) requires a separate `prisma.config.ts` and driver adapter — our spec and better-auth's docs assume v6 patterns. Do not auto-upgrade.
 - **Tailwind is v4** (CSS-first config). There is **no `tailwind.config.ts`** — theme tokens are declared via `@theme inline { ... }` in `app/globals.css`. PostCSS uses `@tailwindcss/postcss`. Don't add `autoprefixer` (Tailwind 4 includes it).
 - **Component library is shadcn/ui v4** (built on Base UI, not Radix). Components live in `components/ui/` (owned, not a dep). Add new ones with `npx shadcn@latest add <name>`.
+- **For a link styled as a button** (e.g. landing-page CTA), use `buttonVariants()` directly on `<Link>` — *not* `<Button render={<Link />}>`. Base UI's `<Button>` defaults to `nativeButton: true` and throws a runtime warning when rendered as a non-`<button>` element. Pattern: `<Link href="..." className={buttonVariants()}>...</Link>`.
 - **Font is Geist** (Vercel's), wired via `next/font/google` in `app/layout.tsx` as a CSS variable `--font-sans`.
 - **Brand defaults**: emerald-600 primary + amber-500 accent, overridden per Organisation at runtime via the `:root` tokens in `globals.css`. The default radius is `0.5rem` (8px).
 - **Middleware is optimistic-only**. It checks for the session cookie's existence (no DB call), because Prisma can't run on the edge runtime. Real session validation happens server-side via `lib/rbac.ts`.
