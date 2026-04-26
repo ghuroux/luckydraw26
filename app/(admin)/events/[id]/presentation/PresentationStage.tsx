@@ -25,7 +25,6 @@ type Phase =
       prizeId: string;
       isTest: boolean;
       selection: Selection;
-      attempt: number;
     };
 
 export function PresentationStage({
@@ -34,6 +33,11 @@ export function PresentationStage({
   prizeNameById,
 }: PresentationStageProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  // Monotonic counter incremented on every revealing transition. Used as the
+  // DrawStage key so a new winner always remounts the stage fresh, even when
+  // React batches the preceding 'preparing' state update into the same render
+  // (which would otherwise hide the intermediate unmount).
+  const [revealKey, setRevealKey] = useState(0);
 
   useEffect(() => {
     const es = new EventSource(`/api/events/${eventId}/stream`);
@@ -45,7 +49,8 @@ export function PresentationStage({
 
     const onRevealed = (isTest: boolean) => (e: MessageEvent) => {
       const data = JSON.parse(e.data) as { prizeId: string } & Selection;
-      setPhase((prev) => ({
+      setRevealKey((k) => k + 1);
+      setPhase({
         kind: "revealing",
         prizeId: data.prizeId,
         isTest,
@@ -56,11 +61,7 @@ export function PresentationStage({
           pool: data.pool,
           eligibilityReset: data.eligibilityReset,
         },
-        attempt:
-          prev.kind === "revealing" && prev.prizeId === data.prizeId
-            ? prev.attempt + 1
-            : 0,
-      }));
+      });
     };
 
     const onCleared = (e: MessageEvent) => {
@@ -94,7 +95,7 @@ export function PresentationStage({
     const prizeName = prizeNameById[phase.prizeId] ?? "Prize";
     return (
       <DrawStage
-        key={`${phase.prizeId}-${phase.attempt}`}
+        key={revealKey}
         pool={phase.selection.pool}
         winnerName={phase.selection.winnerDisplayName}
         prizeName={prizeName}
