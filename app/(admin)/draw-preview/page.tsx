@@ -34,7 +34,11 @@ export default function DrawPreviewPage() {
           winnerName={MOCK_WINNER_NAME}
           winnerTicket={MOCK_TICKET}
           prizeName={MOCK_PRIZE}
-          onComplete={() => setRunning(false)}
+          actions={
+            <Button variant="outline" onClick={() => setRunning(false)}>
+              Dismiss
+            </Button>
+          }
         />
       </div>
     );

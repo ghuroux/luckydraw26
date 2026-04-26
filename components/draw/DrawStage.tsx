@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ConfettiLayer } from "./ConfettiLayer";
 import { NameReel } from "./NameReel";
 import { WinnerCard } from "./WinnerCard";
@@ -10,7 +10,8 @@ interface DrawStageProps {
   winnerName: string;
   winnerTicket?: number;
   prizeName: string;
-  onComplete?: () => void;
+  isTest?: boolean;
+  actions?: ReactNode;
 }
 
 export function DrawStage({
@@ -18,7 +19,8 @@ export function DrawStage({
   winnerName,
   winnerTicket,
   prizeName,
-  onComplete,
+  isTest,
+  actions,
 }: DrawStageProps) {
   const [landed, setLanded] = useState(false);
   const [confettiKey, setConfettiKey] = useState(0);
@@ -26,11 +28,19 @@ export function DrawStage({
   const handleLanded = () => {
     if (landed) return;
     setLanded(true);
-    setConfettiKey((k) => k + 1);
+    if (!isTest) setConfettiKey((k) => k + 1);
   };
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-8 py-12 text-zinc-100">
+      {isTest && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+          <span className="rotate-[-12deg] text-[20vw] font-bold uppercase tracking-[0.2em] text-amber-200/[0.07] select-none">
+            Test
+          </span>
+        </div>
+      )}
+
       <div className="mb-10 text-xs font-medium uppercase tracking-[0.25em] text-amber-200/70">
         {prizeName}
       </div>
@@ -50,15 +60,12 @@ export function DrawStage({
         />
       </div>
 
-      <ConfettiLayer triggerKey={confettiKey} />
+      {!isTest && <ConfettiLayer triggerKey={confettiKey} />}
 
-      {landed && onComplete && (
-        <button
-          onClick={onComplete}
-          className="mt-10 text-sm text-zinc-500 transition-colors hover:text-zinc-200"
-        >
-          Dismiss
-        </button>
+      {landed && actions && (
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          {actions}
+        </div>
       )}
     </div>
   );

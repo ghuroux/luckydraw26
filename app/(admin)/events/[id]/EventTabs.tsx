@@ -16,6 +16,7 @@ export function EventTabs({ eventId }: Props) {
     { href: `${base}/entries`, label: "Entries" },
     { href: `${base}/prizes`, label: "Prizes" },
     { href: `${base}/packages`, label: "Packages" },
+    { href: `${base}/draw`, label: "Draw" },
   ];
 
   return (
