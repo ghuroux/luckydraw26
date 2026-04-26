@@ -20,7 +20,11 @@ export default async function EventDetailPage({ params }: PageProps) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Entries" value={event._count.entries} />
+        <StatCard
+          label="Entries"
+          value={event._count.entries}
+          href={`/events/${event.id}/entries`}
+        />
         <StatCard
           label="Prizes"
           value={event._count.prizes}

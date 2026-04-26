@@ -13,6 +13,7 @@ export function EventTabs({ eventId }: Props) {
 
   const tabs = [
     { href: base, label: "Overview" },
+    { href: `${base}/entries`, label: "Entries" },
     { href: `${base}/prizes`, label: "Prizes" },
     { href: `${base}/packages`, label: "Packages" },
   ];
