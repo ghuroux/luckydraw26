@@ -49,6 +49,7 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 - **`useSearchParams()` requires a `<Suspense>` boundary** in Next 15 when the page is statically rendered. See `app/login/page.tsx` for the pattern.
 - **better-auth's `additionalFields.role`** has `input: false`, so `signUpEmail` ignores any role passed in. The seed script does signup, then updates role separately.
 - **The `jose` edge-runtime warning at build time is non-blocking** — it only affects deflate-compressed JWTs, which we never use.
+- **`.next/` cache invalidation**: when changing the CSS pipeline (Tailwind version, postcss config, theme tokens) or installing/swapping major libs, dev mode may throw `Cannot find module './XXX.js'` from stale chunk references in the build manifest. Fix: stop dev, `rm -rf .next/`, restart `npm run dev`.
 - **Schema deltas from v1**: cuid IDs throughout, `Prize.lockedAt` formalises winner-locking, `EntrySource` records origin, `Entry.paidAt` for reconciliation, `AuditLog` is cross-cutting.
 
 ## Conventions

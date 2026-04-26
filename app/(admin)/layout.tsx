@@ -13,8 +13,11 @@ export default async function AdminLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b bg-background">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link href="/dashboard" className="text-base font-semibold tracking-tight">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-4">
+          <Link
+            href="/dashboard"
+            className="whitespace-nowrap text-base font-semibold tracking-tight"
+          >
             Lucky Draw
           </Link>
           <nav className="flex items-center gap-6 text-sm text-muted-foreground">
@@ -34,10 +37,12 @@ export default async function AdminLayout({
               Settings
             </Link>
           </nav>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>
+          <div className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
+            <span
+              className="truncate"
+              title={role ? `${session.user.email} · ${role}` : session.user.email}
+            >
               {session.user.email}
-              {role ? ` · ${role}` : ""}
             </span>
             <LogoutButton />
           </div>
