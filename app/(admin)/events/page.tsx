@@ -2,26 +2,11 @@ import Link from "next/link";
 import type { EventStatus } from "@prisma/client";
 import { listEvents } from "@/lib/actions/event";
 import { buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { EventsFilters } from "./EventsFilters";
+import { EventsTable } from "./EventsTable";
 import { parsePageParam } from "@/lib/pagination";
 
 const VALID_STATUSES = ["DRAFT", "OPEN", "CLOSED", "DRAWN"] as const;
-
-const STATUS_VARIANT: Record<EventStatus, "default" | "secondary" | "outline"> = {
-  DRAFT: "outline",
-  OPEN: "default",
-  CLOSED: "secondary",
-  DRAWN: "secondary",
-};
 
 interface PageProps {
   searchParams: Promise<{
@@ -63,56 +48,7 @@ export default async function EventsPage({ searchParams }: PageProps) {
       {events.length === 0 ? (
         <EmptyState hasFilters={status !== "ALL" || !!search} />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Entries</TableHead>
-                <TableHead className="text-right">Prizes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {events.map((event) => (
-                <TableRow
-                  key={event.id}
-                  className="relative cursor-pointer hover:bg-muted/50"
-                >
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/events/${event.id}`}
-                      className="after:absolute after:inset-0"
-                    >
-                      {event.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {event.date
-                      ? new Date(event.date).toLocaleDateString(undefined, {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })
-                      : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANT[event.status]}>
-                      {event.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {event._count.entries}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {event._count.prizes}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <EventsTable events={events} />
       )}
 
       {pagination.totalPages > 1 && (

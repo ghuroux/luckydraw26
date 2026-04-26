@@ -1,15 +1,8 @@
 import Link from "next/link";
 import { listEntrants } from "@/lib/actions/entrant";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { EntrantsFilters } from "./EntrantsFilters";
+import { EntrantsTable } from "./EntrantsTable";
 import { parsePageParam } from "@/lib/pagination";
 
 interface PageProps {
@@ -51,56 +44,7 @@ export default async function EntrantsPage({ searchParams }: PageProps) {
       {entrants.length === 0 ? (
         <EmptyState hasFilters={!!search} />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead className="text-right">Entries</TableHead>
-                <TableHead>Last activity</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entrants.map((entrant) => {
-                const lastActivity =
-                  entrant.entries[0]?.createdAt ?? entrant.createdAt;
-                return (
-                  <TableRow
-                    key={entrant.id}
-                    className="relative cursor-pointer hover:bg-muted/50"
-                  >
-                    <TableCell className="font-medium">
-                      <Link
-                        href={`/entrants/${entrant.id}`}
-                        className="after:absolute after:inset-0"
-                      >
-                        {entrant.firstName} {entrant.lastName}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {entrant.email}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {entrant.phone ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {entrant._count.entries}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(lastActivity).toLocaleDateString(undefined, {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <EntrantsTable entrants={entrants} />
       )}
 
       {pagination.totalPages > 1 && (
