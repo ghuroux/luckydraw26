@@ -73,7 +73,11 @@ export default async function EventDetailPage({ params }: PageProps) {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Entries" value={event._count.entries} />
-        <StatCard label="Prizes" value={event._count.prizes} />
+        <StatCard
+          label="Prizes"
+          value={event._count.prizes}
+          href={`/events/${event.id}/prizes`}
+        />
         <StatCard label="Packages" value={event._count.packages} />
       </div>
 
@@ -139,17 +143,34 @@ export default async function EventDetailPage({ params }: PageProps) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          {label}
-        </p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      </CardContent>
-    </Card>
+function StatCard({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: number;
+  href?: string;
+}) {
+  const inner = (
+    <CardContent className="pt-6">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+    </CardContent>
   );
+
+  if (href) {
+    return (
+      <Card className="transition hover:border-foreground/20">
+        <Link href={href} className="block">
+          {inner}
+        </Link>
+      </Card>
+    );
+  }
+  return <Card>{inner}</Card>;
 }
 
 function DetailRow({
