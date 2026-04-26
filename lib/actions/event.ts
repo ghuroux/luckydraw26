@@ -74,9 +74,149 @@ export async function createEvent(
   });
 
   revalidatePath("/events");
-  // Phase 1c will switch this to redirect to /events/[id] once the detail
-  // page exists. For now, list view shows the new row.
-  redirect("/events");
+  redirect(`/events/${created.id}`);
+}
+
+export async function getEvent(id: string) {
+  await requireRole("STAFF");
+  return db.event.findUnique({
+    where: { id },
+    include: {
+      _count: { select: { entries: true, prizes: true, packages: true } },
+    },
+  });
+}
+
+const updateEventSchema = createEventSchema;
+
+export type UpdateEventInput = z.infer<typeof updateEventSchema>;
+
+export async function updateEvent(
+  id: string,
+  input: UpdateEventInput,
+): Promise<ActionResult> {
+  await requireRole("ADMIN");
+
+  const parsed = updateEventSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Validation failed.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors as Record<
+        string,
+        string[]
+      >,
+    };
+  }
+
+  const existing = await db.event.findUnique({ where: { id } });
+  if (!existing) {
+    return { ok: false, error: "Event not found." };
+  }
+  if (existing.status === "DRAWN") {
+    return {
+      ok: false,
+      error: "Cannot edit a drawn event — winners are already recorded.",
+    };
+  }
+
+  const data = parsed.data;
+  const updated = await db.event.update({
+    where: { id },
+    data: {
+      name: data.name,
+      description: data.description || null,
+      date: data.date ? new Date(data.date) : null,
+      drawTime: data.drawTime || null,
+      entryCost: data.entryCost,
+      prizePool: data.prizePool ? data.prizePool : null,
+    },
+  });
+
+  await logAudit({
+    action: "EVENT_UPDATED",
+    entityType: "Event",
+    entityId: id,
+    metadata: {
+      before: { name: existing.name, entryCost: String(existing.entryCost) },
+      after: { name: updated.name, entryCost: String(updated.entryCost) },
+    },
+  });
+
+  revalidatePath(`/events/${id}`);
+  revalidatePath("/events");
+  return { ok: true };
+}
+
+// Transition: DRAFT|CLOSED → OPEN. Requires at least one prize and the
+// event must not be drawn. Audit-logs as EVENT_OPENED on first open or
+// EVENT_REOPENED when transitioning back from CLOSED.
+export async function openEvent(id: string): Promise<ActionResult> {
+  await requireRole("ADMIN");
+
+  const event = await db.event.findUnique({
+    where: { id },
+    include: { _count: { select: { prizes: true } } },
+  });
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.status === "OPEN") {
+    return { ok: false, error: "Event is already open." };
+  }
+  if (event.status === "DRAWN" || event.drawnAt) {
+    return { ok: false, error: "Cannot reopen a drawn event." };
+  }
+  if (event._count.prizes === 0) {
+    return {
+      ok: false,
+      error: "Add at least one prize before opening the event.",
+    };
+  }
+
+  const wasReopen = event.status === "CLOSED";
+
+  await db.event.update({
+    where: { id },
+    data: { status: "OPEN" },
+  });
+
+  await logAudit({
+    action: wasReopen ? "EVENT_REOPENED" : "EVENT_OPENED",
+    entityType: "Event",
+    entityId: id,
+  });
+
+  revalidatePath(`/events/${id}`);
+  revalidatePath("/events");
+  return { ok: true };
+}
+
+// Transition: OPEN → CLOSED. No further entries accepted; draw can run.
+export async function closeEvent(id: string): Promise<ActionResult> {
+  await requireRole("ADMIN");
+
+  const event = await db.event.findUnique({ where: { id } });
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.status !== "OPEN") {
+    return {
+      ok: false,
+      error: `Cannot close event in ${event.status} status.`,
+    };
+  }
+
+  await db.event.update({
+    where: { id },
+    data: { status: "CLOSED" },
+  });
+
+  await logAudit({
+    action: "EVENT_CLOSED",
+    entityType: "Event",
+    entityId: id,
+  });
+
+  revalidatePath(`/events/${id}`);
+  revalidatePath("/events");
+  return { ok: true };
 }
 
 interface ListEventsParams {
