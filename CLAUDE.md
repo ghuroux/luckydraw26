@@ -10,17 +10,19 @@ A monthly charity lucky draw application originally built ~2 years ago in Next.j
 
 ## Current status
 
-In **Phase 1** (event/entrant CRUD). Phase 0 (foundations) committed.
+**Phase 1 shipped end-to-end.** App now drives the full event lifecycle: org settings, event CRUD with tabs (Overview / Entries / Prizes / Packages), prize + package management, lifecycle transitions (open/close/reopen), entrant list + profile + CSV export, admin entry creation with sequential ticket allocation, audit logging across every mutation. **Next**: Phase 2 (the draw).
+
+The spec was refreshed (commit `44e8f85`) to make Phases 2-7 buildable: pool-of-10 reveal algorithm, single-column premium animation brief, SSE auth pattern, SendGrid via SMTP, storage driver interface, soft-delete entries, currency/locale/timezone on Organisation, POPIA anonymisation, and more. **Read `V2_SPEC.md §8.7` and the Phase 2 build-phase entry before starting Phase 2.**
 
 Phases (from `V2_SPEC.md §13`):
 - 0. Foundations — ✅ done
-- 1. Events & entrants core — in progress
-- 2. The draw (slot machine + presentation)
+- 1. Events & entrants core — ✅ done (1a–1g; 1h hygiene deferred)
+- 2. The draw — ⏳ next
 - 3. Tablet capture
 - 4. Email
-- 5. Public portal + reconciliation
-- 6. Themability + polish
-- 7. Hardening
+- 5. Public portal + reconciliation (introduces schema migration: `Event.publicDescriptionHtml`, `Entry.voidedAt/voidReason`, `PublicEntryRateLimit`, `ENTRY_VOIDED`/`ENTRY_UNVOIDED`)
+- 6. Themability + polish (introduces schema migration: `Organisation.currencyCode/locale/timezone`, `Entrant.deletedAt`, `ENTRANT_DELETED`)
+- 7. Hardening (ship-ready gate)
 
 ## Dev commands
 
@@ -51,6 +53,10 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 - **The `jose` edge-runtime warning at build time is non-blocking** — it only affects deflate-compressed JWTs, which we never use.
 - **`.next/` cache invalidation**: when changing the CSS pipeline (Tailwind version, postcss config, theme tokens) or installing/swapping major libs, dev mode may throw `Cannot find module './XXX.js'` from stale chunk references in the build manifest. Fix: stop dev, `rm -rf .next/`, restart `npm run dev`.
 - **Schema deltas from v1**: cuid IDs throughout, `Prize.lockedAt` formalises winner-locking, `EntrySource` records origin, `Entry.paidAt` for reconciliation, `AuditLog` is cross-cutting.
+- **shadcn `<Select>` `onValueChange` is `(value: string | null) => void`**, not `(string) => void`. When narrowing to a typed enum, wrap: `onValueChange={(v) => handler(v ?? "")}` (see `AddEntryButton.tsx` for the pattern).
+- **Entry creation is OPEN-only.** DRAFT events accept no entries (server returns "Event is still in setup — open it before adding entries"). Same gate in the UI hides the Add Entry button.
+- **Sequential ticket allocation** uses a transaction with retry-on-unique-conflict (up to 3 attempts) — see `lib/actions/entry.ts` `createEntry`. We do *not* use SERIALIZABLE isolation; the unique constraint + cheap retry covers the actual concurrency we expect.
+- **Form prefill in dialogs**: use RHF's `values` prop (not `defaultValues`) so the dialog re-syncs when the editing target changes. See `PrizesManager.PrizeDialog`.
 
 ## Conventions
 
@@ -63,6 +69,9 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 - **shadcn components first**: prefer `<Button>`, `<Input>`, `<Label>`, `<Card>` from `@/components/ui/` over hand-rolled markup. Add new shadcn components on demand (`npx shadcn@latest add table tabs select dialog toast` etc.) rather than upfront.
 - **RBAC**: call `requireRole('ADMIN')` (or higher) at the top of every server action that mutates. UI gating via `<RoleGate minimum="...">` is convenience-only — never trust it for security.
 - **Audit log**: any mutation that matters (event lifecycle, draws, locks, deletes, role changes) calls `logAudit({ action, entityType, entityId, metadata })`. The cross-cutting sweep happens in Phase 7.
+- **Server actions live in `lib/actions/<entity>.ts`** — one file per top-level entity (`organisation`, `event`, `prize`, `package`, `entrant`, `entry`). All start with `"use server"`, all gate with `requireRole(...)` at the top, all return a discriminated `ActionResult` shape (`{ ok: true, data? }` or `{ ok: false, error, fieldErrors? }`).
+- **Tabbed event navigation** is a layout (`app/(admin)/events/[id]/layout.tsx`) that fetches the event once and renders the persistent header (name + status badge + Edit + lifecycle actions) plus `<EventTabs>` (client, uses `usePathname` for the active state). Inner pages (`page.tsx`, `prizes`, `packages`, `entries`) are content-only — no breadcrumb, no header. Add a tab by pushing one entry into `EventTabs.tsx`'s `tabs` array.
+- **Stretched-link rows** for whole-row click targets in tables: `<TableRow className="relative cursor-pointer hover:bg-muted/50">` with the primary cell's `<Link className="after:absolute after:inset-0">`. One `<a>` in the DOM, full row clickable, text in other cells stays selectable. Used in `/events`, `/entrants`.
 
 ## Working with the user
 
