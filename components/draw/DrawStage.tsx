@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ConfettiLayer } from "./ConfettiLayer";
+import { MuteToggle } from "./MuteToggle";
 import { NameReel } from "./NameReel";
+import { playPhase, stopAllSounds } from "./sounds";
 import { WinnerCard } from "./WinnerCard";
 
 interface DrawStageProps {
@@ -31,6 +33,13 @@ export function DrawStage({
     if (!isTest) setConfettiKey((k) => k + 1);
   };
 
+  const handlePhaseChange = useCallback((phase: string) => {
+    playPhase(phase as Parameters<typeof playPhase>[0]);
+  }, []);
+
+  // Cut audio if the user dismisses the stage mid-animation.
+  useEffect(() => () => stopAllSounds(), []);
+
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-8 py-12 text-zinc-100">
       {isTest && (
@@ -41,6 +50,8 @@ export function DrawStage({
         </div>
       )}
 
+      <MuteToggle />
+
       <div className="mb-10 text-xs font-medium uppercase tracking-[0.25em] text-amber-200/70">
         {prizeName}
       </div>
@@ -49,6 +60,7 @@ export function DrawStage({
         pool={pool}
         winnerName={winnerName}
         onLanded={handleLanded}
+        onPhaseChange={handlePhaseChange}
       />
 
       <div className="mt-10 w-full">

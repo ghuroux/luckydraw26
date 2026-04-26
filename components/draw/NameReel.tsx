@@ -24,6 +24,7 @@ interface NameReelProps {
   pool: string[];
   winnerName: string;
   onLanded?: () => void;
+  onPhaseChange?: (phase: Phase) => void;
 }
 
 const easeInQuad = (t: number) => t * t;
@@ -87,9 +88,10 @@ export function NameReel(props: NameReelProps) {
   return reduced ? <ReducedMotionReel {...props} /> : <FullMotionReel {...props} />;
 }
 
-function FullMotionReel({ pool, winnerName, onLanded }: NameReelProps) {
+function FullMotionReel({ pool, winnerName, onLanded, onPhaseChange }: NameReelProps) {
   const stripRef = useRef<HTMLDivElement>(null);
   const onLandedRef = useRef(onLanded);
+  const onPhaseChangeRef = useRef(onPhaseChange);
   const [phase, setPhase] = useState<Phase>("spinUp");
   const strip = useMemo(() => buildStrip(pool, winnerName), [pool, winnerName]);
   const initialOffset = -INITIAL_INDEX * ITEM_HEIGHT_PX;
@@ -100,7 +102,14 @@ function FullMotionReel({ pool, winnerName, onLanded }: NameReelProps) {
   // the winner card cross-fades in would cancel and restart the reel.
   useEffect(() => {
     onLandedRef.current = onLanded;
+    onPhaseChangeRef.current = onPhaseChange;
   });
+
+  // Fire onPhaseChange once per phase transition. setPhase bails on identical
+  // values, so this effect only re-runs when the phase actually changes.
+  useEffect(() => {
+    onPhaseChangeRef.current?.(phase);
+  }, [phase]);
 
   useEffect(() => {
     let raf = 0;
