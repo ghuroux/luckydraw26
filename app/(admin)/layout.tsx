@@ -12,27 +12,30 @@ export default async function AdminLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-muted/30 bg-surface">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <Link href="/dashboard" className="text-lg font-semibold">
+      <header className="border-b bg-background">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          <Link href="/dashboard" className="text-base font-semibold tracking-tight">
             Lucky Draw
           </Link>
-          <nav className="flex items-center gap-6 text-sm">
-            <Link href="/dashboard" className="hover:text-primary">
+          <nav className="flex items-center gap-6 text-sm text-muted-foreground">
+            <Link href="/dashboard" className="transition hover:text-foreground">
               Dashboard
             </Link>
-            <Link href="/events" className="hover:text-primary">
+            <Link href="/events" className="transition hover:text-foreground">
               Events
             </Link>
-            <Link href="/entrants" className="hover:text-primary">
+            <Link href="/entrants" className="transition hover:text-foreground">
               Entrants
             </Link>
-            <Link href="/settings/organisation" className="hover:text-primary">
+            <Link
+              href="/settings/organisation"
+              className="transition hover:text-foreground"
+            >
               Settings
             </Link>
           </nav>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-muted">
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>
               {session.user.email}
               {role ? ` · ${role}` : ""}
             </span>
@@ -40,7 +43,7 @@ export default async function AdminLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
         {children}
       </main>
     </div>

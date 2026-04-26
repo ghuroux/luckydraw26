@@ -6,6 +6,16 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { authClient } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 const schema = z.object({
   email: z.string().email("Please enter a valid email address."),
@@ -41,65 +51,62 @@ function LoginForm() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="w-full max-w-sm space-y-4 rounded-lg border border-muted/30 p-6"
-    >
-      <h1 className="text-2xl font-semibold">Sign in</h1>
+    <Card className="w-full max-w-sm">
+      <CardHeader>
+        <CardTitle>Sign in</CardTitle>
+        <CardDescription>Lucky Draw admin</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              {...register("email")}
+            />
+            {errors.email && (
+              <p className="text-sm text-destructive">{errors.email.message}</p>
+            )}
+          </div>
 
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          {...register("email")}
-          className="mt-1 block w-full rounded-md border border-muted/30 bg-surface px-3 py-2 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-        />
-        {errors.email && (
-          <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-        )}
-      </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              {...register("password")}
+            />
+            {errors.password && (
+              <p className="text-sm text-destructive">
+                {errors.password.message}
+              </p>
+            )}
+          </div>
 
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium">
-          Password
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          {...register("password")}
-          className="mt-1 block w-full rounded-md border border-muted/30 bg-surface px-3 py-2 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-        />
-        {errors.password && (
-          <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
-        )}
-      </div>
+          {serverError && (
+            <p className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
+              {serverError}
+            </p>
+          )}
 
-      {serverError && (
-        <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">
-          {serverError}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="w-full rounded-md bg-primary px-4 py-2 text-white transition hover:opacity-90 disabled:opacity-50"
-      >
-        {isSubmitting ? "Signing in…" : "Sign in"}
-      </button>
-    </form>
+          <Button type="submit" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
 export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
-      <Suspense fallback={<div className="text-muted">Loading…</div>}>
+      <Suspense
+        fallback={<div className="text-muted-foreground">Loading…</div>}
+      >
         <LoginForm />
       </Suspense>
     </main>

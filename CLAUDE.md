@@ -40,6 +40,10 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 
 - **Postgres runs on host port 5433**, not 5432. The user's machine has a host Postgres on 5432. docker-compose maps 5433→5432.
 - **Prisma is pinned to `^6.0.0`**. v7 (released late 2025) requires a separate `prisma.config.ts` and driver adapter — our spec and better-auth's docs assume v6 patterns. Do not auto-upgrade.
+- **Tailwind is v4** (CSS-first config). There is **no `tailwind.config.ts`** — theme tokens are declared via `@theme inline { ... }` in `app/globals.css`. PostCSS uses `@tailwindcss/postcss`. Don't add `autoprefixer` (Tailwind 4 includes it).
+- **Component library is shadcn/ui v4** (built on Base UI, not Radix). Components live in `components/ui/` (owned, not a dep). Add new ones with `npx shadcn@latest add <name>`.
+- **Font is Geist** (Vercel's), wired via `next/font/google` in `app/layout.tsx` as a CSS variable `--font-sans`.
+- **Brand defaults**: emerald-600 primary + amber-500 accent, overridden per Organisation at runtime via the `:root` tokens in `globals.css`. The default radius is `0.5rem` (8px).
 - **Middleware is optimistic-only**. It checks for the session cookie's existence (no DB call), because Prisma can't run on the edge runtime. Real session validation happens server-side via `lib/rbac.ts`.
 - **`useSearchParams()` requires a `<Suspense>` boundary** in Next 15 when the page is statically rendered. See `app/login/page.tsx` for the pattern.
 - **better-auth's `additionalFields.role`** has `input: false`, so `signUpEmail` ignores any role passed in. The seed script does signup, then updates role separately.
@@ -53,7 +57,8 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 - **Mutations = server actions** colocated with the page that triggers them. REST routes only for: SSE streams, public entry submission, programmatic access (file upload, etc.).
 - **All inputs validated with Zod at the boundary** (server action arg, route handler body, query params).
 - **Comments**: default to none. Only add when the WHY is non-obvious (hidden constraint, subtle invariant, workaround). Never explain WHAT — well-named identifiers do that.
-- **Theming**: use semantic Tailwind tokens (`bg-surface`, `text-foreground`, `text-muted`, `bg-primary`, `bg-accent`) — not raw colours. Defined as CSS variables in `app/globals.css`, eventually driven by the `Organisation` row.
+- **Theming**: use semantic Tailwind tokens (`bg-background`, `text-foreground`, `text-muted-foreground`, `bg-primary`/`text-primary-foreground`, `bg-accent`/`text-accent-foreground`, `bg-destructive`/`text-destructive`, `border-border`) — not raw colours. Defined as CSS variables in `app/globals.css` and exposed to Tailwind via `@theme inline`. Eventually driven by the `Organisation` row.
+- **shadcn components first**: prefer `<Button>`, `<Input>`, `<Label>`, `<Card>` from `@/components/ui/` over hand-rolled markup. Add new shadcn components on demand (`npx shadcn@latest add table tabs select dialog toast` etc.) rather than upfront.
 - **RBAC**: call `requireRole('ADMIN')` (or higher) at the top of every server action that mutates. UI gating via `<RoleGate minimum="...">` is convenience-only — never trust it for security.
 - **Audit log**: any mutation that matters (event lifecycle, draws, locks, deletes, role changes) calls `logAudit({ action, entityType, entityId, metadata })`. The cross-cutting sweep happens in Phase 7.
 

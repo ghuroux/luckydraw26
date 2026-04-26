@@ -45,7 +45,7 @@ Design implications that thread through the rest of this spec:
 |------------------|---------------------------------|---------------------------------------------------------------------|
 | Framework        | Next.js 15 (App Router)         | One repo, server actions for forms, built-in SSE, image optimization |
 | UI               | React 19 + TypeScript 5         | —                                                                   |
-| Styling          | Tailwind CSS 3.4                | Stable; v4 is optional once we have time                             |
+| Styling          | Tailwind CSS 4 + shadcn/ui v4   | CSS-first config (`@theme` in `globals.css`); shadcn built on Base UI |
 | Forms / validation | react-hook-form + Zod         | Eliminates v1's form-input bugs                                      |
 | ORM              | Prisma 6                        | Continuity with v1 schema; well-known                                |
 | Database         | PostgreSQL 16 (self-hosted EC2) | Owned by your devops team                                            |
