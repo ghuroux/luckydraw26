@@ -1,0 +1,264 @@
+// Lucky Draw v2 — see V2_SPEC.md §6 for the data-model contract.
+// Auth tables (User/Session/Account/Verification) follow better-auth's expected shape.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────── Auth (managed by better-auth) ───────────
+
+model User {
+  id            String     @id
+  email         String     @unique
+  emailVerified Boolean    @default(false)
+  name          String
+  image         String?
+  role          Role       @default(STAFF)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+  auditLogs     AuditLog[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+}
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  STAFF
+}
+
+// ─────────── Org / theming ───────────
+
+model Organisation {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  logoUrl      String?
+  primaryColor String   @default("#1f2937")
+  accentColor  String   @default("#10b981")
+  bgPattern    String?
+  contactEmail String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  events       Event[]
+}
+
+// ─────────── Domain ───────────
+
+model Entrant {
+  id                String    @id @default(cuid())
+  firstName         String
+  lastName          String
+  email             String    @unique
+  phone             String?
+  dateOfBirth       DateTime?
+  sponsorShareOptIn Boolean   @default(false)
+  smsOptIn          Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  entries           Entry[]
+
+  @@index([lastName, firstName])
+  @@index([createdAt])
+}
+
+model Event {
+  id                String       @id @default(cuid())
+  organisationId    String
+  organisation      Organisation @relation(fields: [organisationId], references: [id])
+  name              String
+  description       String?
+  date              DateTime?
+  drawTime          String?
+  entryCost         Decimal      @default(0) @db.Decimal(10, 2)
+  prizePool         Decimal?     @db.Decimal(10, 2)
+  status            EventStatus  @default(DRAFT)
+  drawnAt           DateTime?
+
+  // Public portal (see V2_SPEC.md §8.8)
+  isPublished       Boolean      @default(false)
+  publishedSlug     String?      @unique
+  publicDescription Json?
+  publicHeroImage   String?
+  themeOverride     Json?
+
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  entries           Entry[]
+  packages          EntryPackage[]
+  prizes            Prize[]
+
+  @@index([status])
+  @@index([organisationId, status])
+  @@index([date])
+}
+
+enum EventStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  DRAWN
+}
+
+model EntryPackage {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  label     String
+  quantity  Int
+  cost      Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  entries   Entry[]
+}
+
+model Entry {
+  id              String        @id @default(cuid())
+  eventId         String
+  entrantId       String
+  ticketNumber    Int
+  packageId       String?
+  packageEntryNum Int?
+  donationAmount  Decimal?      @db.Decimal(10, 2)
+  paymentRef      String?
+  paidAt          DateTime?
+  source          EntrySource   @default(ADMIN)
+  createdAt       DateTime      @default(now())
+
+  event           Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  entrant         Entrant       @relation(fields: [entrantId], references: [id])
+  package         EntryPackage? @relation(fields: [packageId], references: [id])
+  prizeWon        Prize?        @relation("PrizeWinner")
+
+  @@unique([eventId, ticketNumber])
+  @@index([eventId, createdAt])
+  @@index([entrantId])
+}
+
+enum EntrySource {
+  ADMIN
+  TABLET
+  PUBLIC
+}
+
+model Prize {
+  id             String    @id @default(cuid())
+  eventId        String
+  name           String
+  description    String?
+  order          Int       @default(0)
+  imageUrl       String?
+  imageAlt       String?
+  winningEntryId String?   @unique
+  lockedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  event          Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  winningEntry   Entry?    @relation("PrizeWinner", fields: [winningEntryId], references: [id])
+
+  @@index([eventId, order])
+}
+
+// ─────────── Logs ───────────
+
+model EmailLog {
+  id        String    @id @default(cuid())
+  to        String
+  subject   String
+  template  String
+  context   Json
+  sentAt    DateTime?
+  error     String?
+  createdAt DateTime  @default(now())
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?
+  user       User?       @relation(fields: [userId], references: [id])
+  action     AuditAction
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+enum AuditAction {
+  EVENT_CREATED
+  EVENT_UPDATED
+  EVENT_OPENED
+  EVENT_CLOSED
+  EVENT_REOPENED
+  EVENT_DELETED
+  EVENT_PUBLISHED
+  EVENT_UNPUBLISHED
+  PRIZE_CREATED
+  PRIZE_UPDATED
+  PRIZE_DELETED
+  PRIZE_DRAWN
+  PRIZE_TEST_DRAWN
+  WINNER_LOCKED
+  WINNER_CLEARED
+  WINNER_NOTIFIED
+  ENTRY_CREATED
+  ENTRY_DELETED
+  ENTRY_RECONCILED
+  ENTRANT_UPDATED
+  USER_INVITED
+  USER_ROLE_CHANGED
+  USER_DEACTIVATED
+  ORG_UPDATED
+}

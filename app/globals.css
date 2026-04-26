@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Default theme tokens — overridden at runtime by org/event theme (see V2_SPEC.md §8.12). */
+    --color-primary: 31 41 55;
+    --color-accent: 16 185 129;
+    --color-surface: 255 255 255;
+    --color-foreground: 17 24 39;
+    --color-muted: 107 114 128;
+  }
+
+  .dark {
+    --color-surface: 17 24 39;
+    --color-foreground: 243 244 246;
+    --color-muted: 156 163 175;
+  }
+
+  body {
+    @apply bg-surface text-foreground;
+  }
+}

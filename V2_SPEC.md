@@ -96,16 +96,17 @@ Carries v1's domain forward, adds organisation/theming, public-portal fields, an
 ```prisma
 // ---------- Auth (better-auth managed) ----------
 model User {
-  id            String    @id
-  email         String    @unique
-  emailVerified Boolean   @default(false)
+  id            String     @id
+  email         String     @unique
+  emailVerified Boolean    @default(false)
   name          String
-  role          Role      @default(STAFF)
+  role          Role       @default(STAFF)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
   sessions      Session[]
   accounts      Account[]
+  auditLogs     AuditLog[]
 }
 
 model Session {
@@ -115,24 +116,39 @@ model Session {
   token     String   @unique
   ipAddress String?
   userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// Account holds the password hash for email/password and OAuth tokens for any
+// future providers. The OAuth-related fields are unused today but match the
+// shape better-auth expects.
 model Account {
-  id           String   @id
-  userId       String
-  providerId   String
-  accountId    String
-  password     String?  // argon2 hash for email/password
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  password              String?
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([providerId, accountId])
 }
 
 model Verification {
-  id         String   @id
+  id         String    @id
   identifier String
   value      String
   expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
 }
 
 enum Role {
@@ -288,6 +304,7 @@ model EmailLog {
 model AuditLog {
   id         String      @id @default(cuid())
   userId     String?     // null for system actions
+  user       User?       @relation(fields: [userId], references: [id])
   action     AuditAction
   entityType String      // "Event" | "Prize" | "Entry" | "Entrant" | "User" | "Organisation"
   entityId   String

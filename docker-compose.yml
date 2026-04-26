@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: luckydraw-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: luckydraw
+      POSTGRES_PASSWORD: luckydraw
+      POSTGRES_DB: luckydraw
+    # Host port 5433 → container 5432, to avoid clashing with any
+    # host-installed Postgres already bound to 5432.
+    ports:
+      - "5433:5432"
+    volumes:
+      - luckydraw-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U luckydraw -d luckydraw"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  luckydraw-postgres-data:
