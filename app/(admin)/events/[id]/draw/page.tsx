@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ExternalLink } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
+import { buttonVariants } from "@/components/ui/button";
 import { DrawManager } from "./DrawManager";
 
 interface PageProps {
@@ -79,7 +81,26 @@ export default async function DrawPage({ params }: PageProps) {
         </Banner>
       )}
 
-      {hasPrizes && <DrawManager prizes={event.prizes} canDraw={canDraw} />}
+      {hasPrizes && (
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Open the presentation view on a second screen before starting the
+              first draw.
+            </p>
+            <Link
+              href={`/events/${event.id}/presentation`}
+              target="_blank"
+              rel="noopener"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Open presentation
+              <ExternalLink data-icon="inline-end" />
+            </Link>
+          </div>
+          <DrawManager prizes={event.prizes} canDraw={canDraw} />
+        </>
+      )}
     </div>
   );
 }
