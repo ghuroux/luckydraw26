@@ -47,6 +47,7 @@ Design implications that thread through the rest of this spec:
 | UI               | React 19 + TypeScript 5         | —                                                                   |
 | Styling          | Tailwind CSS 4 + shadcn/ui v4   | CSS-first config (`@theme` in `globals.css`); shadcn built on Base UI |
 | Forms / validation | react-hook-form + Zod         | Eliminates v1's form-input bugs                                      |
+| i18n / formatting| `Intl.*` + `date-fns-tz`        | Org-configurable currency, locale, timezone via `lib/format.ts`     |
 | ORM              | Prisma 6                        | Continuity with v1 schema; well-known                                |
 | Database         | PostgreSQL 16 (self-hosted EC2) | Owned by your devops team                                            |
 | Auth             | better-auth                     | Lives in our Postgres, handles sessions/CSRF, supports roles         |
@@ -165,8 +166,13 @@ model Organisation {
   logoUrl       String?
   primaryColor  String   @default("#1f2937")
   accentColor   String   @default("#10b981")
-  bgPattern     String?  // optional URL to repeating bg image
+  bgPattern     String?  // public-portal only — subtle repeating background image
   contactEmail  String?
+  // Toggleable in Org settings. All currency + date display routes through
+  // lib/format.ts using these.
+  currencyCode  String   @default("ZAR")             // ISO 4217 (e.g. ZAR, USD, EUR, GBP)
+  locale        String   @default("en-ZA")           // BCP 47; drives number/currency formatting
+  timezone      String   @default("Africa/Johannesburg")  // IANA tz identifier
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   events        Event[]
@@ -183,11 +189,13 @@ model Entrant {
   dateOfBirth    DateTime?
   sponsorShareOptIn Boolean @default(false)  // may we share contact details with event sponsors
   smsOptIn          Boolean @default(false)  // collected now; SMS feature deferred
+  deletedAt      DateTime?  // POPIA right-to-be-forgotten: when set, name/email/phone are anonymised but entries + audit rows remain intact (see §8.5)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   entries        Entry[]
   @@index([lastName, firstName])
   @@index([createdAt])
+  @@index([deletedAt])
 }
 
 model Event {
@@ -204,11 +212,12 @@ model Event {
   drawnAt            DateTime?
 
   // Public portal
-  isPublished        Boolean       @default(false)
-  publishedSlug      String?       @unique
-  publicDescription  Json?         // Tiptap JSON
-  publicHeroImage    String?
-  themeOverride      Json?         // optional per-event theme overrides
+  isPublished           Boolean    @default(false)
+  publishedSlug         String?    @unique
+  publicDescription     Json?      // Tiptap JSON — editor source of truth
+  publicDescriptionHtml String?    // Denormalised rendered HTML. Written on save via @tiptap/html; public page renders this directly so its bundle ships zero Tiptap.
+  publicHeroImage       String?    // Storage key, resolved through the storage driver
+  themeOverride         Json?      // Shape: { primaryColor?: string; accentColor?: string } — 6-digit hex strings, validated by the same regex as Organisation
 
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
@@ -246,12 +255,14 @@ model Entry {
   id              String        @id @default(cuid())
   eventId         String
   entrantId       String
-  ticketNumber    Int           // sequential per event
+  ticketNumber    Int           // sequential per event; preserved even when voided (no renumbering)
   packageId       String?
   packageEntryNum Int?          // position within the package (1..quantity)
   donationAmount  Decimal?      @db.Decimal(10, 2)
-  paymentRef      String?       // free-text from tablet flow
+  paymentRef      String?       // free-text from tablet flow; defaults to "CASH" if blank on tablet submit
   paidAt          DateTime?     // null = unreconciled (typically PUBLIC source); set automatically for ADMIN/TABLET when ref captured
+  voidedAt        DateTime?     // soft-delete: voided entries are excluded from draws but kept for audit
+  voidReason      String?       // free-text, captured at void time
   source          EntrySource   @default(ADMIN)
   createdAt       DateTime      @default(now())
 
@@ -288,6 +299,19 @@ model Prize {
   winningEntry   Entry?   @relation("PrizeWinner", fields: [winningEntryId], references: [id])
 
   @@index([eventId, order])
+}
+
+// Sliding-window rate limit for public entry submissions. IP is hashed with
+// HMAC-SHA256(env: RATE_LIMIT_SALT) so we don't store raw addresses (POPIA-
+// friendly). Rows older than 24h are pruned on each insert (cheap; no cron).
+model PublicEntryRateLimit {
+  id            String   @id @default(cuid())
+  ipHash        String
+  slug          String
+  createdAt     DateTime @default(now())
+
+  @@index([ipHash, slug, createdAt])
+  @@index([createdAt])
 }
 
 model EmailLog {
@@ -337,9 +361,12 @@ enum AuditAction {
   WINNER_CLEARED
   WINNER_NOTIFIED
   ENTRY_CREATED
-  ENTRY_DELETED
+  ENTRY_DELETED        // hard delete; rare, for pre-launch test cleanup
+  ENTRY_VOIDED         // soft delete (sets voidedAt); the operational path post-launch
+  ENTRY_UNVOIDED       // restore a previously voided entry
   ENTRY_RECONCILED     // paidAt set
   ENTRANT_UPDATED
+  ENTRANT_DELETED      // POPIA anonymisation (soft); see §8.5
   USER_INVITED
   USER_ROLE_CHANGED
   USER_DEACTIVATED
@@ -353,6 +380,11 @@ Notable changes from v1:
 - `Prize.lockedAt` formalises the "winner locked, no redraw" state
 - `EntrySource` records where an entry came from
 - `Entry.paidAt` supports the manual-reconciliation flow for public entries
+- `Entry.voidedAt` / `voidReason` enable soft-delete via reconciliation; voided entries are excluded from draws but preserved for audit (and ticket numbers are not reused)
+- `Event.publicDescriptionHtml` denormalises Tiptap-rendered HTML so the public page ships no Tiptap deps
+- `PublicEntryRateLimit` table backs the public-portal submit limiter (hashed IP, sliding window, self-pruning)
+- `Organisation.currencyCode` / `locale` / `timezone` make currency + date display org-configurable (defaults `ZAR` / `en-ZA` / `Africa/Johannesburg`); composed via `Intl.NumberFormat` and `date-fns-tz` in `lib/format.ts`
+- `Entrant.deletedAt` enables POPIA right-to-be-forgotten via anonymisation rather than hard delete (preserves audit trail and historical entry-to-prize relations)
 - `Entrant.sponsorShareOptIn` records consent to share contact details with event sponsors (the actual revenue path for the charity)
 - `Entrant.smsOptIn` collected now even though SMS is deferred
 - `EmailLog` gives us a basic outbox for retries and a UI
@@ -388,7 +420,12 @@ Notable changes from v1:
 - Edit name, contact email
 - Upload logo (stored via storage driver, returns URL)
 - Pick primary + accent colours (color picker with live preview)
-- Optional repeating background pattern image
+- Optional repeating background pattern image (public portal only)
+- **Localisation**:
+  - `currencyCode` dropdown (common: ZAR, USD, EUR, GBP, NAD, BWP) — affects every money display in admin + public via `formatCurrency()`
+  - `locale` dropdown (common: en-ZA, en-US, en-GB, de-DE) — affects number / date formatting
+  - `timezone` dropdown (common SA-friendly: Africa/Johannesburg, UTC, Europe/London) plus a typeahead for any IANA tz — affects every datetime display via `formatDate()` / `formatDateTime()`
+  - Defaults: ZAR / en-ZA / Africa/Johannesburg
 - "View public portal preview" link
 
 ### 8.3 User management (`/settings/users`) — SUPERADMIN
@@ -397,7 +434,9 @@ Notable changes from v1:
 - Change role, deactivate user, force password reset
 
 ### 8.4 Events
-**List (`/events`)**: filter by status (Draft / Open / Closed / Drawn), search by name. Past events on `/events/past` (drawn > 60 days old).
+**List (`/events`)**: filter by status (Draft / Open / Closed / Drawn), search by name, server-paginated. Defaults to non-DRAWN events; "All" filter shows DRAWN too.
+
+**Past events (`/events/past`)**: archive of all `DRAWN` events (no time threshold — clean separation of "active" vs. "history"). Sortable by drawnAt.
 
 **Create (`/events/new`)** and **edit (`/events/[id]/edit`)** — single form, broken into tabs:
 - *Basics*: name, internal description, date, draw time, entry cost, prize pool
@@ -419,6 +458,13 @@ Notable changes from v1:
 - Click through to entrant profile: contact info, full entry history across events, total spent
 - CSV export (already in v1)
 - Inline edit of contact fields
+- **Delete (POPIA right-to-be-forgotten)** — ADMIN action on entrant profile:
+  - Anonymises rather than hard-deletes (preserves historical entry-to-prize relations and audit-log integrity, both of which the regulations actually allow under "legitimate interest" for compliance evidence)
+  - Sets `deletedAt = now()`, replaces `firstName` with "[deleted]", `lastName` with the entrant's `id` slug (so duplicates don't break the firstName index), `email` with `deleted-<id>@example.invalid` (preserves email-uniqueness without leaking the original), nulls `phone` and `dateOfBirth`
+  - Hidden from `/entrants` list and search; cannot be picked in entry-creation typeahead; excluded from draw eligibility
+  - Existing entries retain their ticket numbers and audit log entries (linked via the now-anonymised entrant)
+  - Audit-logged `ENTRANT_DELETED` with the *un*-anonymised name in the metadata (the audit log is the legitimate record of who erased what; restricted to SUPERADMIN view)
+  - Confirmation dialog requires typing the entrant's email to proceed
 
 ### 8.6 Entries
 **Add (admin form, `/events/[id]` entry tab)**:
@@ -431,20 +477,30 @@ Notable changes from v1:
 - v1 bug to avoid: do **not** auto-fill email when selecting an existing entrant
 
 **Tablet capture (`/events/[id]/tablet-capture`)**:
-- Fullscreen, simplified UI tuned for iPad portrait
-- Step 1: collect entrant details (with autocomplete on email); sponsor-share + SMS opt-in checkboxes
-- Step 2: pick package or N individual entries; show running total
-- Step 3: payment-handover screen — shows amount + payment ref input; says "Hand the device to the customer / process payment on the other device, then enter ref"
-- Step 4: confirmation with assigned ticket numbers, "Capture another entry" button
-- On submit, `paidAt` is set to `now()` (tablet entries are paid by the time the ref is captured)
-- Available to STAFF; no role gate beyond auth
-- Full-screen mode + auto-logout after N minutes idle (configurable)
+
+Fullscreen, simplified UI tuned for iPad portrait. Touch-friendly (large tap targets, minimal typing where possible). Available to STAFF; no role gate beyond auth.
+
+Five-step flow:
+
+- **Step 1 — Landing**: persistent home screen the seller returns to between captures. Shows event name, prize summary (top 3 prizes with thumbnails when images are wired in Phase 5), entry pricing (single + active packages), live total entries sold. Single big CTA: "Sell ticket".
+- **Step 2 — Entrant details**: capture first name, last name, email, phone, sponsor-share + SMS opt-ins. As the email is typed, do a debounced lookup; if it matches an existing entrant, show a **"Welcome back, {firstName}"** card with their details pre-filled and locked (Change button to edit) so the seller can skip past confirmation. New entrant fields appear inline when no match.
+- **Step 3 — Selection**: pick package or N individual entries; show live running total at the bottom of the screen.
+- **Step 4 — Payment handover**: shows amount due + a payment reference input. Copy: "Hand the device to the customer for payment, then enter the reference." If the seller leaves the ref blank and submits, it defaults to **`CASH`** (entry still marked paid — `paidAt = now()`).
+- **Step 5 — Confirmation**: shows the assigned ticket numbers ("Tickets #18–#22 for Jane Doe"), the running event-day total, and two CTAs: "Capture another entry" (returns to Step 1) and "Done" (returns to Step 1 after a 5-second auto-advance).
+
+On submit, `paidAt` is set to `now()` and `source = TABLET`. Entries appear immediately in the admin entries list and the entrant's profile (revalidatePath fires on those routes).
+
+**Idle auto-logout**: configurable via the `TABLET_IDLE_LOGOUT_MINUTES` env var, default `15`. After idle timeout the tablet returns to the login screen (NOT the landing) so an unattended device can't keep capturing.
 
 **Reconciliation (`/events/[id]/reconciliation`)** — ADMIN:
-- Lists entries with `paidAt = null` (typically `source = PUBLIC`)
+- Lists entries with `paidAt = null AND voidedAt = null` (typically `source = PUBLIC`)
 - Shows entrant, ticket numbers, amount owed, submitted-at, payment ref input inline
-- "Mark paid" sets `paidAt = now()` and stores the ref; bulk-select supported
-- "Void entry" deletes (audit-logged) for no-shows
+- "Mark paid" sets `paidAt = now()` and stores the ref; bulk-select supported (audit-logged `ENTRY_RECONCILED`)
+- "Void entry" is a **soft-delete**: sets `voidedAt = now()` and prompts for `voidReason` (free-text). Voided entries:
+  - Are excluded from the draw eligibility filter
+  - Keep their `ticketNumber` (no renumbering — preserves audit clarity)
+  - Are visible in a separate "Voided" tab on this page with an "Unvoid" action
+  - Audit-logged `ENTRY_VOIDED` / `ENTRY_UNVOIDED` with the reason in metadata
 - Counter at top: outstanding count + outstanding amount
 
 ### 8.7 Draw experience
@@ -452,79 +508,202 @@ Notable changes from v1:
 **Admin draw (`/events/[id]/draw`)** — for the operator:
 - Lists prizes with current status (no winner / winner / locked)
 - "Start draw for [Prize Name]" button per un-won prize
-- Triggers slot-machine animation client-side, fed by a server-picked winner
-- After spin: shows winner card with "Lock in winner" + "Redraw" buttons
+- Triggers the reveal animation client-side, fed by a server-picked winner + name pool
+- After the reveal: shows the winner card with "Lock in winner" + "Redraw" buttons
 - "Lock in winner" sets `Prize.lockedAt`, disables further redraws for that prize
 - "Redraw" picks a new winner (only if not locked)
-- "Send winner email" button (manual, also auto-sent on lock if configured)
+- "Send winner email" button — **Phase 2 ships as no-op stub** with a "coming in Phase 4" toast; Phase 4 wires it to NodeMailer + the EmailLog outbox
 
-**Selection algorithm**:
-- Use `crypto.randomInt(0, eligibleEntries.length)`
-- Eligible = entries whose entrant has not already won a prize at this event (one-win-per-entrant rule, same as v1)
-- Selection is weighted by entry count automatically — entrants with more entries appear more times in the eligible list
-- Server returns the winning entry ID + a list of "decoy" entrant names for the slot-machine reels (so the animation looks plausible without revealing the result)
+#### Selection algorithm
 
-**Presentation mode (`/events/[id]/presentation`)** — for projection:
-- Clean, full-bleed UI sized for projection (16:9, large type, themed)
-- Mirrors the admin draw via SSE — when admin clicks "Start draw", the presentation screen runs the same animation in sync
-- Confetti + winner sound on lock-in
+- RNG: `crypto.randomInt(0, eligibleEntries.length)` (cryptographically strong — fixes v1's `Math.random` weakness)
+- Eligible pool = entries whose **entrant has not already won a prize at this event** (one-win-per-entrant rule)
+- Selection is weighted by entry count automatically — entrants with more tickets appear more times in the eligible list
+- **Pool exhaustion fallback**: if no eligible entries remain (e.g. 5 prizes but only 4 unique entrants), the eligibility filter resets — the next draw runs against the full entries list as if it were the first prize. An entrant can win more than once when this happens. The UI shows an explanatory note ("All entrants have already won — eligibility reset for this prize") and the audit log records it.
+
+#### The reveal animation (reimagined for v2)
+
+We're **not** rebuilding v1's three-column arcade slot machine. The v2 reveal is a single elegant column tuned for the premium prize-giving moment of a high-end charity gala. Visual brief:
+
+- **Layout**: full-bleed dark surface, single centred column ~60% of viewport height, taking up the full width responsively (and 16:9 in presentation mode). Generous breathing room.
+- **Type**: large semi-bold display type (Geist or a complementary display face), high contrast against the surface, names rendered legibly throughout — no blur until the very fast portion.
+- **Pool**: server returns the winning entry ID **plus a pool of 10 real entrant names** (the winner is one of the 10; the other 9 are randomly sampled from the rest of the event's entrants). When the event has fewer than 10 unique entrants, the pool repeats — never falls below 10 frames so the animation feels full.
+- **Sequence** (~6 seconds total):
+  1. **Spin-up** (~0.5s) — names accelerate from a slow scroll to fast vertical motion, slight upward easing
+  2. **Race** (~3.5s) — names blur slightly as they fly past at peak speed; ambient rhythmic ticks per pass
+  3. **Slow-down** (~1.5s) — exponential deceleration; ticks lengthen and lower in pitch; names regain legibility
+  4. **Land** (~0.5s) — final settling onto the winner with a satisfying chime and a subtle scale-up
+  5. **Reveal** — winner card cross-fades in below: full name, ticket number, prize name; confetti burst from the card edges
+- **Reduced-motion**: respect `prefers-reduced-motion` — replace the scroll with a 3-second cross-fade through the 10 names ending on the winner; no blur, no scale.
+- **Components**: split into `<DrawStage>` (orchestration), `<NameReel>` (the scrolling column), `<WinnerCard>` (the reveal), `<ConfettiLayer>` (canvas-confetti). Each ≤200 lines.
+
+#### Sound design
+
+The reveal needs to feel *expensive* — not arcade. Premium royalty-free sound effects from a curated library (Freesound CC0, Zapsplat free tier, or similar). v1's `_v1/public/sounds/` files are a starting reference but are likely too "Vegas" for this brief — evaluate and replace where they don't match the gala feel.
+
+Required sounds:
+- `spin-loop.mp3` — looped ambient tick during race, ~0.5s loop
+- `slowdown.mp3` — descending sweep for the slow-down phase
+- `land.mp3` — single satisfying chime on landing (warm bell, not coin-clatter)
+- `winner.mp3` — celebratory swell for the reveal (~2s, building, sparkles)
+
+Audio respects an in-app mute toggle (persisted in localStorage) and the OS-level mute. Howler.js (already in v1's deps) handles the playback.
+
+#### Presentation mode (`/events/[id]/presentation`) — for projection
+
+- Clean, full-bleed UI sized for projection (16:9, large type, themed with the org/event palette)
+- Mirrors the admin draw via SSE — when the operator clicks "Start draw" on the admin page, the presentation screen runs the same animation in sync
+- Confetti + winner sound on lock-in (also via SSE)
 - No interactive controls; read-only
+- Recovers gracefully from a dropped connection: on reconnect, fetches current state from a snapshot endpoint and skips any animation in progress (don't re-spin a draw the audience already saw)
 
-**SSE channel** (`/api/events/[id]/stream`):
-- Events: `draw_started`, `draw_winner_revealed`, `winner_locked`, `winner_cleared`, `prize_updated`
-- Auth-gated (admin/staff only)
-- Reconnect with last-event-id for resilience
+#### SSE channel (`/api/events/[id]/stream`)
 
-**Redraw / clear winner**:
-- `POST /api/events/[id]/prizes/[prizeId]/clear-winner` — only if not locked, ADMIN only
-- Spec change from v1: explicit `lockedAt` rather than relying on `winningEntryId` presence
+- Events: `draw_started`, `draw_winner_revealed`, `winner_locked`, `winner_cleared`, `prize_updated`, plus `draw_test_started` / `draw_test_winner_revealed` for the test mode (separate event names so a rehearsal can never be confused for the real thing)
+- **Auth pattern**: validation happens *inside the route handler*, not at the edge middleware (Prisma can't run on the edge). The route handler:
+  1. Calls `auth.api.getSession({ headers })` (server-side better-auth lookup)
+  2. If no session or role < STAFF, returns `401` immediately and closes the stream
+  3. Otherwise pipes events from an in-memory `EventEmitter` (one per event-id, server-singleton) into a `ReadableStream` formatted per the SSE protocol
+- Last-event-id reconnect supported (simple in-memory ring buffer of the last ~50 events per event-id; clients send `Last-Event-ID` header on reconnect)
+- Heartbeat: send a `:keepalive` comment every 25s so proxies don't time out the stream
 
-**Test draw mode** (rehearsal before going live):
+**Concurrency / lock-in race**: two admins clicking "Lock in winner" at the same prize at the same moment is prevented by `Prize.winningEntryId @unique`: the second update fails with a unique-constraint error, surfaced as "This prize was just locked by another admin" to the slower one. We don't need optimistic locking beyond this.
+
+#### Redraw / clear winner
+
+- `POST /api/events/[id]/prizes/[prizeId]/clear-winner` — only if `lockedAt` is null; ADMIN only
+- Audit-logged as `WINNER_CLEARED`
+- Triggers an SSE `winner_cleared` event so presentation mode resets the prize card
+
+#### Test draw mode (rehearsal before going live)
+
 - "Test draw" button next to "Start draw"; only available when event is `OPEN` or `CLOSED` and prize has no winner
 - Picks a winner using the live algorithm but **does not persist** — no `winningEntryId`, no `lockedAt`, no email
 - UI is decorated with a "TEST" watermark; presentation mode shows the same watermark so the audience isn't misled if it's accidentally shown
-- SSE event is `draw_test_started` / `draw_test_winner_revealed` (separate channel from live so a rehearsal can't be confused with the real thing)
 - Logged as `PRIZE_TEST_DRAWN` in the audit log
-- Lets the MC rehearse the slot machine with real entries and the projector wired up
+- Lets the MC rehearse the entire reveal end-to-end with the projector wired up
 
 ### 8.8 Public event portal
 
 This is the v1-speced-but-unbuilt feature.
 
-**Publishing** (in event edit, *Public portal* tab):
-- Toggle `isPublished`
-- Auto-suggest `publishedSlug` from name; user can edit
-- Rich-text description editor (Tiptap) with: headings, bold/italic, links, bullet/numbered lists, images
-- Hero image upload
-- Per-event theme overrides (primary/accent colours), defaults to org theme
-- "Preview" button opens the public page in a new tab in draft mode (signed token URL)
+#### Storage driver (`lib/storage.ts`)
 
-**Public page (`/p/[slug]`)** — unauthenticated:
-- Themed layout (org logo + colour palette, optionally overridden by event)
-- Renders Tiptap content, prizes (image + name + description), entry pricing (cost + packages)
-- Entry CTA → entry form
-- Read-only after event closes; shows winners after `DRAWN`
+Image uploads land in Phase 5 — logo (`Organisation.logoUrl`), event hero (`Event.publicHeroImage`), prize images (`Prize.imageUrl`). All flow through one driver interface so production can flip from local disk to S3 with an env change, no refactor.
 
-**Public entry form (`/p/[slug]/enter`)**:
+```ts
+interface StorageDriver {
+  upload(input: {
+    key: string;        // e.g. "events/<eventId>/hero-<timestamp>.png"
+    data: Buffer;
+    contentType: string;
+  }): Promise<{ url: string }>;
+  url(key: string): string;        // public URL for a stored key
+  delete(key: string): Promise<void>;
+}
+```
+
+Two implementations:
+- **`LocalDriver`**: writes under `STORAGE_LOCAL_PATH`; reads served via `/api/storage/[...path]/route.ts` (streams the file with the right content-type, cache headers). Devops should mount this path as a volume.
+- **`S3Driver`**: `@aws-sdk/client-s3`; `url()` returns the bucket's public URL. Bucket must be configured for public read on the served prefix.
+
+Driver picked at module load via `STORAGE_DRIVER=local|s3`. Key naming convention: `<entity>/<entityId>/<purpose>-<timestamp>.<ext>` — predictable, sortable, prefix-friendly for S3 lifecycle rules later.
+
+Upload UI uses a single small `<ImageField>` component (Phase 5 build) that handles file picker + client-side validation (max 5MB, jpg/png/webp) + progress.
+
+#### Publishing (event edit, *Public portal* tab)
+
+- **Toggle `isPublished`**: when off, `/p/[slug]` returns 404
+- **Slug**:
+  - Auto-suggested via slugify(event.name) → e.g. "October Charity Golf Day" → `october-charity-golf-day`
+  - As the operator types, debounced server check pings a `checkSlugAvailable` server action; UI shows a green "Available" or red "Taken — try `october-charity-golf-day-2026`" with a one-click apply
+  - Suggested fallback variations: append `-<year>`, then `-2`, `-3`, etc. until free
+  - On submit, server re-validates inside the transaction; surfaces a friendly retry message if a race made it taken in the interim
+- **Rich-text description**: Tiptap editor with starter kit (headings H1-H3, bold/italic, links, lists) plus image extension. Images uploaded inline via the storage driver; the editor inserts the resolved URL.
+- **Tiptap rendering**: the same extension list lives in `lib/tiptap-extensions.ts`, imported by both editor (client) and `@tiptap/html`'s `generateHTML(json, extensions)` on the server. On save, the action renders once and stores the HTML to `Event.publicDescriptionHtml`. The public page renders the HTML directly — public bundle ships zero Tiptap.
+- **Hero image upload**: `<ImageField>` writes via the storage driver, sets `publicHeroImage` to the storage key
+- **Per-event theme override**: optional primary/accent colour pickers (same component as org settings); writes `themeOverride: { primaryColor?, accentColor? }`. When unset, public layout uses the org theme.
+- **Preview**: button opens `/p/[slug]?preview=<signed-token>` in a new tab. Token signed with `BETTER_AUTH_SECRET`, includes `eventId` + 1h expiry; viewing in preview mode bypasses the `isPublished` check but watermarks the page with "PREVIEW".
+
+#### Public page (`/p/[slug]`) — unauthenticated
+
+- Themed layout: org `bgPattern` if set (subtle repeating background image, public portal only — admin UI stays clean), org logo, primary/accent colours overridden by `Event.themeOverride` when present
+- Renders `publicDescriptionHtml` directly, prizes (image + name + description, in `order`), entry pricing (single cost + active packages)
+- Entry CTA → `/p/[slug]/enter`
+- Read-only after event closes (`status === CLOSED` or `DRAWN`): hide entry CTA, show "Entries closed" notice; for `DRAWN`, append a "Winners" section listing winning entrant names + their prize (only after `lockedAt` is set on the prize)
+- ISR with `revalidate: 60` for unauthenticated visits; explicit `revalidatePath('/p/<slug>')` in any server action that mutates an event the slug points to (lifecycle, prize edits, theme changes, content saves)
+
+#### Public entry form (`/p/[slug]/enter`)
+
 - Collects entrant details (matches Entrant schema)
 - Choose package or N individual entries
 - Sponsor-share opt-in + SMS opt-in checkboxes (each with a short, plain-English explanation alongside)
-- Honeypot + simple rate limit (per-IP, in-memory or DB)
+- **Bot defenses**:
+  - Honeypot field (`name="company"`, hidden via CSS, server rejects if non-empty)
+  - DB-backed rate limit via `PublicEntryRateLimit`: max 10 submissions per IP per slug per rolling hour. IP is hashed (`HMAC-SHA256(ip, RATE_LIMIT_SALT)` from env) before storing — no raw addresses retained. Each insert prunes rows older than 24h.
+  - On rate-limit hit: HTTP 429 with friendly message "You've submitted a lot of entries recently — please try again later or contact the event organisers."
 - No payment integration: submission creates entries with `source = PUBLIC`, `paymentRef = null`, `paidAt = null`. Admin reconciles via the reconciliation page (8.6).
-- Confirmation page with ticket numbers + email confirmation, with a clear note that payment is settled separately
+- Confirmation page with ticket numbers + email confirmation (Phase 4 hookup), with a clear note that payment is settled separately
 
 ### 8.9 Email notifications
-- Templates (React Email or simple HTML strings):
-  - `entry-confirmation` — sent on public entry submission
-  - `winner-notification` — sent when `Prize.lockedAt` set (or manually triggered)
-  - `user-invitation` — sent by SUPERADMIN flow
-  - `password-reset` — better-auth template
-- All sends recorded in `EmailLog` with retry-on-failure (admin-triggered "Retry" from the log UI)
-- Templates render with org theme (logo + colour) for brand consistency
+
+**Templating**: [React Email](https://react.email) — components written in TSX, compiled to MJML-quality HTML, dev-server preview built in. Lives under `lib/email/templates/`.
+
+Templates:
+- `entry-confirmation` — sent on public entry submission (Phase 5)
+- `winner-notification` — sent when `Prize.lockedAt` is set, or manually re-triggered from the draw page
+- `user-invitation` — sent by SUPERADMIN invite flow (Phase 7-ish)
+- `password-reset` — better-auth's flow; we override the template render to keep brand consistency
+
+All templates render with the active org's logo + primary colour for brand consistency. The render call passes `{ organisation, ...templateContext }` so each template can pull `org.name`, `org.logoUrl`, `org.primaryColor`, `org.contactEmail`.
+
+**Provider**: SendGrid via SMTP (NodeMailer talks to it through the existing `SMTP_*` env vars — no SDK lock-in). Devops env will be:
+
+```
+SMTP_HOST="smtp.sendgrid.net"
+SMTP_PORT="587"
+SMTP_USER="apikey"            # literal string per SendGrid SMTP docs
+SMTP_PASS="<sendgrid-api-key>"
+SMTP_FROM="noreply@<verified-domain>"
+```
+
+SendGrid requires sender authentication (SPF/DKIM on the sending domain). Devops territory; flagged here for the runbook.
+
+**From / Reply-To**:
+- `From: SMTP_FROM` — the verified sender, fixed per environment
+- `Reply-To: Organisation.contactEmail || SMTP_FROM` — so replies route to the org's contact (set per Organisation), falling back to the From if unset
+
+**EmailLog** (data model §6) records every send attempt:
+- `sentAt = null` until the SMTP call resolves successfully
+- `error` populated on failure (truncated to 500 chars to avoid log bloat from full SMTP traces)
+- Phase 4 may add `attempts` (Int) and `lastAttemptAt` (DateTime) fields when we wire retry — confirm at start of phase
+
+**Email log UI** (`/settings/email-log`) — SUPERADMIN, separate from the audit log:
+- Reverse-chronological list with filters (template, status: queued/sent/failed, date range)
+- Each row: to, subject, template, status badge, sentAt or error preview
+- Click row → drawer with full context payload (the JSON passed to the template), full error trace, and a "Retry" button (re-runs the send)
+- "Resend" available even on successful sends (operator override)
+
+**Cross-link with audit log**: when the audit log shows `WINNER_NOTIFIED` (or any `*_NOTIFIED`-style action), the row deep-links to the corresponding email-log entry via metadata `{ emailLogId }`.
 
 ### 8.10 Leaderboard (`/events/[id]/leaderboard`)
-- Top entrants by entry count for the event, paginated
-- Shown on the public portal too if event is published
+
+Per-event ranking, paginated. Two views from one query.
+
+**Admin view** (signed-in):
+- Rank
+- Entrant name (full) — linked to `/entrants/[id]`
+- Entries count (the primary weight in draws)
+- Total contributed: sum of (individual entries × entryCost) + (package costs) + donations, formatted via `formatCurrency()` against the org's currencyCode/locale
+- Joined at (timestamp of their first entry on this event)
+- "Won" badge if they've won at least one prize at this event
+
+**Public view** (`/p/[slug]/leaderboard`, only when event isPublished):
+- Same columns except entrant name is shown as **"FirstName L."** (last initial only) for privacy — POPIA-friendly default
+- Total contributed shown as the same currency display
+- Excludes voided + deleted entrants
+
+Both views excluded if `Event.entries.length === 0`. Sorting: entries count desc, then total contributed desc, then joined-at asc as tiebreakers.
 
 ### 8.11 Audit log (`/settings/audit-log`) — SUPERADMIN
 
@@ -536,7 +715,13 @@ This is the v1-speced-but-unbuilt feature.
 - Cross-cutting concern — wired in throughout, with a Phase 7 sweep to ensure coverage
 
 ### 8.12 Theming
-- Tailwind CSS variables (`--color-primary`, `--color-accent`, etc.) set on `<html>` from the active org/event theme
+- Tailwind CSS variables (`--primary`, `--accent`, etc.) declared in `app/globals.css` and exposed to Tailwind via `@theme inline`. Org/event theme overrides cascade in via inline `style={{ '--primary': ... }}` on the route-group layout (admin: `app/(admin)/layout.tsx`; public: `app/(public)/p/[slug]/layout.tsx`).
+- **Dark mode**: `class` strategy with three-state toggle (System / Light / Dark) in the user-menu dropdown (top-right of admin header):
+  - "System" (default) follows `prefers-color-scheme`
+  - "Light" / "Dark" force the corresponding mode
+  - Choice persisted in `localStorage` under `theme` key
+  - SSR injects an inline `<script>` in `<head>` (or `next-themes` lib equivalent) to set the right class before paint, preventing flash-of-unstyled-content
+- Form inputs and surfaces use semantic tokens (`bg-background`, `text-foreground`, `text-muted-foreground`, `border-border`, etc.) — no raw colours — so dark mode "just works" everywhere.
 - Tailwind config exposes `bg-primary`, `text-primary`, etc. via `colors: { primary: 'rgb(var(--color-primary) / <alpha-value>)' }`
 - Dark mode: `class` strategy, toggle in nav, persisted in localStorage. Forms and inputs use semantic `bg-surface` / `text-foreground` tokens — fixes the dark-mode text bugs from v1.
 - All theming flows from one `getActiveTheme()` server function so future per-event override is one place
@@ -625,6 +810,8 @@ app/
   - `STORAGE_DRIVER` = `local` | `s3`
   - `STORAGE_LOCAL_PATH` (if local) — mounted volume
   - `S3_*` (if s3)
+  - `RATE_LIMIT_SALT` (HMAC salt for hashing public entrants' IPs in rate-limit storage)
+  - `TABLET_IDLE_LOGOUT_MINUTES` (default 15)
   - `BOOTSTRAP_EMAIL`, `BOOTSTRAP_PASSWORD` (one-time, for initial superadmin)
 - **DB migrations**: `prisma migrate deploy` runs on container start
 - **Health check**: `GET /api/health` returns 200 if DB reachable
@@ -663,46 +850,67 @@ We build this together; each phase is a checkpoint where the app is usable.
 - Lifecycle transitions (open/close)
 
 ### Phase 2 — The draw
-- crypto-RNG selection endpoint
-- Slot-machine component (split DrawAnimation into <SlotMachine>, <ReelStrip>, <WinnerCard>)
-- Admin draw page
-- Lock / redraw / clear-winner
-- **Test draw mode** (rehearsal — no persistence)
-- Presentation mode + SSE stream (with reconnect/resync for flaky wifi)
-- Sounds + confetti
+- `lib/rng.ts` — crypto-based selection helpers (replaces v1's `Math.random`)
+- `lib/sse.ts` — SSE encoder + per-event in-memory pub/sub with last-event-id buffer
+- Selection endpoint with pool-of-10 + pool-exhaustion fallback (eligibility resets)
+- Reveal animation: `<DrawStage>` / `<NameReel>` / `<WinnerCard>` / `<ConfettiLayer>` (single elegant column, premium typographic feel — *not* v1's three-column arcade)
+- Sound design pass: source 4 premium royalty-free SFX (spin-loop, slowdown, land, winner) + Howler.js wiring + mute toggle persisted in localStorage
+- `respect prefers-reduced-motion` — fallback cross-fade reveal (no scroll, no blur)
+- Admin draw page (`/events/[id]/draw`) — operator UI, per-prize Start/Test buttons
+- Lock / redraw / clear-winner with `Prize.winningEntryId @unique` race protection
+- **Test draw mode** (rehearsal — no persistence, separate SSE event names)
+- Presentation mode (`/events/[id]/presentation`) — full-bleed mirror via SSE, snapshot recovery on reconnect
+- "Send winner email" button stub (no-op + "coming in Phase 4" toast)
 
 ### Phase 3 — Tablet capture
-- Tablet route, simplified flow
-- Payment-handover step
-- Idle auto-logout
+- `/events/[id]/tablet-capture` route — touch-friendly, full-bleed
+- Five-step flow: Landing → Entrant (with welcome-back lookup) → Selection → Payment handover → Confirmation
+- Cash sales: blank payment ref defaults to `CASH` and still marks `paidAt = now()`
+- Returning-entrant detection by email with "Welcome back, {firstName}" prefill
+- Idle auto-logout via `TABLET_IDLE_LOGOUT_MINUTES` env var (default 15) — returns to login, not landing
 
 ### Phase 4 — Email
-- NodeMailer + EmailLog
-- Winner-notification template
-- Entry-confirmation template
-- Retry UI
+- `lib/email.ts` — NodeMailer + SendGrid SMTP wrapper, EmailLog write-on-attempt
+- React Email setup (`lib/email/templates/`) with org-themed shell component
+- Templates: `winner-notification`, `entry-confirmation` (the Phase 5 hookup)
+- `/settings/email-log` SUPERADMIN page — list + filters + drawer + Retry/Resend
+- Replace the Phase 2 "Send winner email" no-op stub with the real call
+- Audit-log cross-link: `WINNER_NOTIFIED` audit rows store `{ emailLogId }` in metadata
+- Possible schema add: `EmailLog.attempts`, `EmailLog.lastAttemptAt` (decide at start of phase)
 
-### Phase 5 — Public portal
-- Tiptap editor in event edit
-- File upload + image rendering (local-disk driver, S3 driver behind same interface)
-- Public page (`/p/[slug]`) with theming
-- Public entry form with rate limit
-- Reconciliation page for unpaid public entries
+### Phase 5 — Public portal + reconciliation
+- `lib/storage.ts` — driver interface + LocalDriver + S3Driver, picked via `STORAGE_DRIVER`
+- `/api/storage/[...path]` route handler for serving local-disk uploads
+- Migration: add `Event.publicDescriptionHtml`, `Entry.voidedAt`, `Entry.voidReason`, `PublicEntryRateLimit` table, `ENTRY_VOIDED`/`ENTRY_UNVOIDED` audit actions, `RATE_LIMIT_SALT` env var
+- `lib/tiptap-extensions.ts` — shared extension list for editor + `@tiptap/html` server render
+- Event edit *Public portal* tab: slug with live-availability check, Tiptap rich text editor with image upload, hero image, per-event theme override, Preview (signed-token URL)
+- `<ImageField>` component (used here + retrofitted into prize/org settings)
+- `/p/[slug]` public page (themed, ISR, hides entries when closed, shows winners when drawn)
+- `/p/[slug]/enter` public entry form (honeypot + DB-backed sliding-window rate limit, hashed IP)
+- `/events/[id]/reconciliation` ADMIN page — Outstanding tab + Voided tab, mark-paid (bulk) + soft-void with reason
 
 ### Phase 6 — Themability + polish
-- Theme tokens + colour pickers
-- Dark mode pass with proper semantic tokens
-- Leaderboard page
-- Past events page
-- v1 → v2 data migration script
+- Migration: add `Organisation.currencyCode`, `locale`, `timezone`, `Entrant.deletedAt`, `ENTRANT_DELETED` audit action
+- `lib/format.ts` — `formatCurrency(value, org)`, `formatDate(date, org)`, `formatDateTime(date, org)`, `formatTime(date, org)` using `Intl.NumberFormat` + `date-fns-tz`. Replace every inline `new Date(...).toLocaleDateString()` and raw `${event.entryCost}` site-wide.
+- Org settings: currency / locale / timezone dropdowns; live preview of "R 1 234,56" / "26 April 2026, 12:30" so SUPERADMIN can see the choice
+- `next-themes` (or hand-rolled equivalent) — three-state System/Light/Dark toggle in the user-menu dropdown
+- Dark-mode sweep: audit every page for hardcoded text colours, ensure all surfaces use semantic tokens
+- `/events/[id]/leaderboard` (admin) + `/p/[slug]/leaderboard` (public, first-initial format)
+- `/events/past` archive page (status === DRAWN, no time threshold)
+- Entrant POPIA delete action with email-confirmation dialog + anonymisation server action
+- v1 → v2 data migration script (carries over entrants + events + entries from `_v1/` Postgres dump)
 
-### Phase 7 — Hardening
-- Server-side pagination on all lists
-- Error boundaries + toast system
-- Form validation messages
-- **Audit log sweep** — confirm `logAudit` calls cover every action enum value; build the audit-log page
-- Health check + structured logs
-- Dockerfile + docs handoff to devops
+### Phase 7 — Hardening (ship-ready gate)
+- **Audit log sweep** — confirm every `AuditAction` enum value has at least one `logAudit()` caller; build `/settings/audit-log` page (filters: actor, action, entity type, date range; row drawer with metadata diff)
+- **Toast system** — sonner + tasteful defaults; replace the `setTimeout`-driven "Saved at X" patterns from Phase 1
+- **Loading + error UIs** — `loading.tsx` per route segment, `error.tsx` for graceful crashes, custom `not-found.tsx`, `global-error.tsx`
+- **Health check** — `GET /api/health` returns 200 + DB latency probe; documented for devops load balancer
+- **Structured logger** (`lib/logger.ts`) — JSON output to stdout; replace scattered `console.error` in audit + email; redact `paymentRef` and personal fields
+- **Session cleanup** — daily prune of expired better-auth sessions (cron in production via devops, or on-login cleanup in app)
+- **Performance audit** — sweep server actions for N+1 queries, confirm covering indexes exist for hot paths (`Entry [eventId, ticketNumber]`, `AuditLog [createdAt]`, `Entrant [lastName, firstName]`), measure p95 of admin draw page with a populated DB
+- **Security pass** — review every `db.$queryRaw` / `db.$executeRaw` (currently zero, but lock that in), confirm Tiptap renders sanitise input, verify CSRF + cookie security via better-auth defaults, confirm `RoleGate` covered by server-side `requireRole()` everywhere
+- **CI / DX**: `.github/workflows/ci.yml` (typecheck + lint + build), ESLint + Prettier config, `.nvmrc`, README rewrite for devops + contributors
+- **Dockerfile + production runbook** — multi-stage Dockerfile, runbook covering env vars, health check, log aggregation, backup + restore basics
 
 ## 14. Decisions log
 
