@@ -78,7 +78,11 @@ export default async function EventDetailPage({ params }: PageProps) {
           value={event._count.prizes}
           href={`/events/${event.id}/prizes`}
         />
-        <StatCard label="Packages" value={event._count.packages} />
+        <StatCard
+          label="Packages"
+          value={event._count.packages}
+          href={`/events/${event.id}/packages`}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

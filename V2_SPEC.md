@@ -330,6 +330,9 @@ enum AuditAction {
   PRIZE_DELETED
   PRIZE_DRAWN          // winner picked (live)
   PRIZE_TEST_DRAWN     // winner picked in test mode (not persisted)
+  PACKAGE_CREATED
+  PACKAGE_UPDATED
+  PACKAGE_DELETED
   WINNER_LOCKED
   WINNER_CLEARED
   WINNER_NOTIFIED
