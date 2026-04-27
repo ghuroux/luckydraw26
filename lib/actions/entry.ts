@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import type { EntrySource, Prisma } from "@prisma/client";
+import type { EntrySource, PaymentMethod, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
@@ -32,16 +32,19 @@ const createEntrySchema = z
       z.object({ mode: z.literal("existing"), id: z.string().min(1) }),
       z.object({ mode: z.literal("new"), data: newEntrantSchema }),
     ]),
-    // Either individual entries (with quantity) or a package selection.
-    selection: z.discriminatedUnion("mode", [
-      z.object({
-        mode: z.literal("individual"),
-        quantity: z.string().regex(/^[1-9]\d*$/, "Must be at least 1."),
+    // A package, individual entries, or both. At least one must be set.
+    selection: z
+      .object({
+        packageId: z.string().min(1).optional(),
+        individualQty: z.number().int().min(0).max(100).optional(),
+      })
+      .refine((s) => !!s.packageId || (s.individualQty ?? 0) > 0, {
+        message: "Pick a package or set a quantity.",
       }),
-      z.object({ mode: z.literal("package"), packageId: z.string().min(1) }),
-    ]),
     donationAmount: z.union([decimalString, z.literal("")]).optional(),
     paymentRef: z.string().max(200).optional().or(z.literal("")),
+    paymentMethod: z.enum(["CASH", "CARD"]).optional(),
+    source: z.enum(["ADMIN", "TABLET"]).optional(),
   })
   .strict();
 
@@ -125,26 +128,30 @@ export async function createEntry(
     return { ok: false, error: reason };
   }
 
-  // Resolve package + quantity.
-  let quantity: number;
-  let packageId: string | null = null;
-  if (data.selection.mode === "package") {
-    const pkg = await db.entryPackage.findUnique({
+  // Resolve package + total quantity. The transaction may carry a package
+  // (pkg.quantity entries with packageEntryNum 1..n) and/or individual
+  // entries on top.
+  const individualQty = data.selection.individualQty ?? 0;
+  let pkg: { id: string; quantity: number } | null = null;
+  if (data.selection.packageId) {
+    const found = await db.entryPackage.findUnique({
       where: { id: data.selection.packageId },
     });
-    if (!pkg || pkg.eventId !== eventId) {
+    if (!found || found.eventId !== eventId) {
       return { ok: false, error: "Package not found." };
     }
-    if (!pkg.isActive) {
+    if (!found.isActive) {
       return { ok: false, error: "That package is no longer active." };
     }
-    quantity = pkg.quantity;
-    packageId = pkg.id;
-  } else {
-    quantity = Number(data.selection.quantity);
-    if (quantity > 100) {
-      return { ok: false, error: "Maximum 100 entries per transaction." };
-    }
+    pkg = { id: found.id, quantity: found.quantity };
+  }
+  const pkgQty = pkg?.quantity ?? 0;
+  const totalQty = pkgQty + individualQty;
+  if (totalQty < 1) {
+    return { ok: false, error: "Pick a package or set a quantity." };
+  }
+  if (totalQty > 100) {
+    return { ok: false, error: "Maximum 100 entries per transaction." };
   }
 
   // Resolve entrant: lookup existing or create new.
@@ -183,7 +190,16 @@ export async function createEntry(
     }
   }
 
-  const paidAt = data.paymentRef && data.paymentRef.trim() ? new Date() : null;
+  const source: EntrySource = data.source ?? "ADMIN";
+  const paymentMethod: PaymentMethod | null = data.paymentMethod ?? null;
+  if (source === "TABLET" && !paymentMethod) {
+    return { ok: false, error: "Payment method is required for tablet sales." };
+  }
+  const trimmedRef = data.paymentRef?.trim() || null;
+  // TABLET sales are always paid at submit (operator just collected it);
+  // ADMIN entries default to paid only when a reference is captured.
+  const paidAt =
+    source === "TABLET" ? new Date() : trimmedRef ? new Date() : null;
   const donation = data.donationAmount && data.donationAmount.trim()
     ? data.donationAmount.trim()
     : null;
@@ -201,27 +217,31 @@ export async function createEntry(
         });
         const start = (last?.ticketNumber ?? 0) + 1;
         const ticketNumbers = Array.from(
-          { length: quantity },
+          { length: totalQty },
           (_, i) => start + i,
         );
 
+        // Package entries are allocated first (rows 0..pkgQty-1), individuals
+        // after (rows pkgQty..totalQty-1). Donation rides on the first row.
         const created = await Promise.all(
-          ticketNumbers.map((ticketNumber, i) =>
-            tx.entry.create({
+          ticketNumbers.map((ticketNumber, i) => {
+            const isPkg = i < pkgQty;
+            return tx.entry.create({
               data: {
                 eventId,
                 entrantId,
                 ticketNumber,
-                packageId,
-                packageEntryNum: packageId ? i + 1 : null,
-                donationAmount: i === 0 ? donation : null, // donation only on first row
-                paymentRef: data.paymentRef?.trim() || null,
+                packageId: isPkg ? pkg!.id : null,
+                packageEntryNum: isPkg ? i + 1 : null,
+                donationAmount: i === 0 ? donation : null,
+                paymentRef: trimmedRef,
+                paymentMethod,
                 paidAt,
-                source: "ADMIN",
+                source,
               },
               select: { id: true },
-            }),
-          ),
+            });
+          }),
         );
 
         return {
@@ -258,9 +278,13 @@ export async function createEntry(
       eventId,
       entrantId,
       ticketNumbers: result.ticketNumbers,
-      quantity,
-      packageId,
+      packageId: pkg?.id ?? null,
+      pkgQty,
+      individualQty,
+      totalQty,
       paid: paidAt !== null,
+      source,
+      paymentMethod,
     },
   });
 

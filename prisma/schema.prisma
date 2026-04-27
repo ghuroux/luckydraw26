@@ -161,17 +161,18 @@ model EntryPackage {
 }
 
 model Entry {
-  id              String        @id @default(cuid())
+  id              String         @id @default(cuid())
   eventId         String
   entrantId       String
   ticketNumber    Int
   packageId       String?
   packageEntryNum Int?
-  donationAmount  Decimal?      @db.Decimal(10, 2)
+  donationAmount  Decimal?       @db.Decimal(10, 2)
   paymentRef      String?
+  paymentMethod   PaymentMethod?
   paidAt          DateTime?
-  source          EntrySource   @default(ADMIN)
-  createdAt       DateTime      @default(now())
+  source          EntrySource    @default(ADMIN)
+  createdAt       DateTime       @default(now())
 
   event           Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
   entrant         Entrant       @relation(fields: [entrantId], references: [id])
@@ -187,6 +188,11 @@ enum EntrySource {
   ADMIN
   TABLET
   PUBLIC
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
 }
 
 model Prize {

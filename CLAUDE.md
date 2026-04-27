@@ -10,16 +10,14 @@ A monthly charity lucky draw application originally built ~2 years ago in Next.j
 
 ## Current status
 
-**Phase 2 shipped end-to-end.** The draw experience is live and projection-ready: crypto-strong RNG with pool-of-10 reveal + eligibility filter + pool-exhaustion fallback, SSE pub/sub with last-event-id replay, single-column reveal animation with piecewise easing across 4 phases (~7.5s total), Howler-driven audio (4 SFX + mute toggle), canvas-confetti, admin draw page with sonner toasts (Start/Test/Lock/Redraw/Clear/email-stub), test-draw rehearsal mode with TEST watermark, and presentation mode at `/events/[id]/presentation` with snapshot recovery on mount + live SSE mirror. **Next**: Phase 3 (tablet capture).
-
-Three pieces of doc-debt reconciled at chunk close (commit pending in this session): `V2_SPEC.md §8.7` now reflects the 7.5s timing (was 6s), the corrected `clearWinner` semantics (unlocks an already-locked prize, not a no-op), and SoundBible as the actual audio source (Pixabay/Mixkit blocked WebFetch).
+**Phase 3 shipped end-to-end.** Tablet capture flow lives at `/events/[id]/tablet-capture` outside the `(admin)` route group: full-bleed, org-themed, STAFF-gated. Five-step machine (landing → entrant search → selection → payment → confirmation) with hybrid `searchEntrants` lookup (name/email/phone), Welcome-back card, package + individual combos at the package's prorated per-ticket rate, CASH/CARD payment method captured discretely on `Entry.paymentMethod` (new enum + nullable column shipped in `20260427104929_add_payment_method`), 5s auto-return to landing, idle auto-logout via `TABLET_IDLE_LOGOUT_MINUTES` (default 15, fractional, 0 disables). `createEntry` schema bumped to a flat `selection: { packageId?, individualQty? }` shape with at-least-one-set refinement; admin `AddEntryButton` rebuilt to the same shape with a "No package" sentinel option. Touch-target hygiene applied via a shared `TAP` class (focus rings + `select-none` + iOS tap-flash kill). **Next**: Phase 4 (email).
 
 Phases (from `V2_SPEC.md §13`):
 - 0. Foundations — ✅ done
 - 1. Events & entrants core — ✅ done (1a–1g; 1h hygiene deferred)
 - 2. The draw — ✅ done (2a–2f)
-- 3. Tablet capture — ⏳ next
-- 4. Email
+- 3. Tablet capture — ✅ done (3a–3f)
+- 4. Email — ⏳ next
 - 5. Public portal + reconciliation (introduces schema migration: `Event.publicDescriptionHtml`, `Entry.voidedAt/voidReason`, `PublicEntryRateLimit`, `ENTRY_VOIDED`/`ENTRY_UNVOIDED`; **also surface SoundBible attribution** per Phase 2 audio sourcing)
 - 6. Themability + polish (introduces schema migration: `Organisation.currencyCode/locale/timezone`, `Entrant.deletedAt`, `ENTRANT_DELETED`)
 - 7. Hardening (ship-ready gate)
@@ -52,7 +50,7 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 - **better-auth's `additionalFields.role`** has `input: false`, so `signUpEmail` ignores any role passed in. The seed script does signup, then updates role separately.
 - **The `jose` edge-runtime warning at build time is non-blocking** — it only affects deflate-compressed JWTs, which we never use.
 - **`.next/` cache invalidation**: when changing the CSS pipeline (Tailwind version, postcss config, theme tokens) or installing/swapping major libs, dev mode may throw `Cannot find module './XXX.js'` from stale chunk references in the build manifest. Fix: stop dev, `rm -rf .next/`, restart `npm run dev`.
-- **Schema deltas from v1**: cuid IDs throughout, `Prize.lockedAt` formalises winner-locking, `EntrySource` records origin, `Entry.paidAt` for reconciliation, `AuditLog` is cross-cutting.
+- **Schema deltas from v1**: cuid IDs throughout, `Prize.lockedAt` formalises winner-locking, `EntrySource` records origin, `Entry.paidAt` for reconciliation, `Entry.paymentMethod` (CASH/CARD enum, captured on tablet flow; nullable for PUBLIC + unreconciled admin entries), `AuditLog` is cross-cutting.
 - **shadcn `<Select>` `onValueChange` is `(value: string | null) => void`**, not `(string) => void`. When narrowing to a typed enum, wrap: `onValueChange={(v) => handler(v ?? "")}` (see `AddEntryButton.tsx` for the pattern).
 - **Entry creation is OPEN-only.** DRAFT events accept no entries (server returns "Event is still in setup — open it before adding entries"). Same gate in the UI hides the Add Entry button.
 - **Sequential ticket allocation** uses a transaction with retry-on-unique-conflict (up to 3 attempts) — see `lib/actions/entry.ts` `createEntry`. We do *not* use SERIALIZABLE isolation; the unique constraint + cheap retry covers the actual concurrency we expect.
@@ -66,6 +64,11 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 - **Sound asset sourcing**: SoundBible's `https://soundbible.com/grab.php?id=XXX&type=mp3` endpoints return real MP3 files via plain `curl` (Pixabay and Mixkit blocked WebFetch with 403). Most SoundBible sounds are CC-Attribution 3.0 — Phase 5 needs a credit somewhere user-facing. See `public/sounds/LICENSES.md` for per-file provenance + 8 swap-in alternates in `_alternates/`.
 - **Toast UX via sonner**: `<Toaster richColors closeButton />` mounted in the root layout (`app/layout.tsx`). Use `import { toast } from "sonner"` then `toast.success(...)` / `toast.error(...)` / `toast.info(...)`. The shadcn wrapper at `components/ui/sonner.tsx` themes it.
 - **Test fixtures**: `npx tsx --env-file=.env scripts/seed-test-fixtures.ts` seeds three events (OPEN with full data + DRAFT empty + DRAWN with locked winners) plus 25 named entrants under `@fixtures.luckydraw.local`. Idempotent (skips events whose name already exists). `--clean` removes the fixture events (cascading) and any fixture entrants no longer referenced.
+- **Tablet-capture route lives outside the `(admin)` group** at `app/events/[id]/tablet-capture/` so it can run full-bleed without the admin sidebar/header/EventTabs chrome. Its own minimal layout applies the org primary/accent theme tokens. URL is still `/events/[id]/tablet-capture` per spec — route groups don't affect URLs.
+- **`createEntry` is the single mutation path** for entries, used by both admin and tablet flows. The `selection` schema is a flat `{ packageId?: string; individualQty?: number }` (refined "at least one set"); package + individual are combinable in one transaction. When both are set, *extra* individual tickets price at the **package's prorated rate** (`pkg.cost / pkg.quantity`), not the event's `entryCost`. Internal allocation is "package entries first (with `packageEntryNum 1..n`), individuals after"; donation rides on row 0 either way.
+- **`source` + `paymentMethod` on createEntry**: pass `source: "TABLET"` from the tablet flow — it forces `paidAt = now()` and requires `paymentMethod` ("CASH" | "CARD"). Admin flow leaves both at defaults (`ADMIN`, null). The earlier "blank ref defaults to CASH" rule is gone — payment method is captured discretely on Step 4.
+- **Idle auto-logout on tablet** is a client hook (`useIdleLogout` in `TabletFlow.tsx`) that listens on `pointerdown`/`touchstart`/`keydown`/`mousemove` and calls `authClient.signOut()` + `router.push('/login')` on expiry. `TABLET_IDLE_LOGOUT_MINUTES` env var (default 15, fractional allowed, 0 disables) drives the timeout. Server reads it in `page.tsx` and threads as a prop — only fires on the tablet route, not admin pages.
+- **Touch-target hygiene on tablet tappables** uses a shared `TAP` class (`select-none [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2`) inlined per file. Custom button-shaped elements (package cards, MethodTile, OptInToggle, search result cards, etc.) compose this with `cn()` so they get the iOS tap-flash kill, no long-press text-select, and a real focus ring for keyboard users.
 
 ## Conventions
 

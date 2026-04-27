@@ -46,7 +46,11 @@ interface EntrantSummary {
 }
 
 type EntrantMode = "existing" | "new";
-type SelectionMode = "individual" | "package";
+
+// Sentinel for "no package" inside the package <Select> — Base UI's Select
+// disallows empty-string values, and packageId === null isn't representable
+// as a SelectItem value.
+const NO_PACKAGE = "__none__";
 
 interface NewEntrantState {
   firstName: string;
@@ -102,11 +106,12 @@ function AddEntryDialog({
   const [selected, setSelected] = useState<EntrantSummary | null>(null);
   const [newEntrant, setNewEntrant] = useState<NewEntrantState>(EMPTY_NEW_ENTRANT);
 
-  // Selection state
-  const hasPackages = packages.length > 0;
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>("individual");
+  // Selection state — package + individual are independent. Buying just a
+  // package = packageId set, qty 0. Buying just N individuals = NO_PACKAGE,
+  // qty N. Buying a package plus extras = both set; extras price at the
+  // package's prorated rate.
+  const [packageId, setPackageId] = useState<string>(NO_PACKAGE);
   const [individualQty, setIndividualQty] = useState("1");
-  const [packageId, setPackageId] = useState<string>(packages[0]?.id ?? "");
 
   // Optional fields
   const [donation, setDonation] = useState("");
@@ -125,9 +130,8 @@ function AddEntryDialog({
       setResults([]);
       setSelected(null);
       setNewEntrant(EMPTY_NEW_ENTRANT);
-      setSelectionMode("individual");
+      setPackageId(NO_PACKAGE);
       setIndividualQty("1");
-      setPackageId(packages[0]?.id ?? "");
       setDonation("");
       setPaymentRef("");
       setError(null);
@@ -157,26 +161,31 @@ function AddEntryDialog({
     };
   }, [searchInput, entrantMode, selected]);
 
-  // Running total
+  // When a package is selected, "extra" individual tickets ride at the
+  // package's prorated per-ticket rate. Without a package, individuals fall
+  // back to the event's regular entry cost.
+  const selectedPkg =
+    packageId !== NO_PACKAGE
+      ? packages.find((p) => p.id === packageId) ?? null
+      : null;
+  const individualRate = selectedPkg
+    ? Number(selectedPkg.cost) / selectedPkg.quantity
+    : Number(entryCost);
+  const indivQtyNum = Number(individualQty) || 0;
+  const totalQty = (selectedPkg?.quantity ?? 0) + indivQtyNum;
+
   const total = useMemo(() => {
-    const cost = (() => {
-      if (selectionMode === "individual") {
-        const qty = Number(individualQty) || 0;
-        return qty * Number(entryCost);
-      }
-      const pkg = packages.find((p) => p.id === packageId);
-      return pkg ? Number(pkg.cost) : 0;
-    })();
+    const pkgCost = selectedPkg ? Number(selectedPkg.cost) : 0;
+    const cost = pkgCost + indivQtyNum * individualRate;
     const donationAmount = donation ? Number(donation) : 0;
     return cost + (Number.isFinite(donationAmount) ? donationAmount : 0);
-  }, [selectionMode, individualQty, packageId, packages, entryCost, donation]);
+  }, [selectedPkg, indivQtyNum, individualRate, donation]);
 
   const canSubmit =
     !submitting &&
     (entrantMode === "existing" ? !!selected : isNewEntrantValid(newEntrant)) &&
-    (selectionMode === "individual"
-      ? Number(individualQty) >= 1
-      : !!packageId);
+    totalQty >= 1 &&
+    totalQty <= 100;
 
   async function handleSubmit() {
     setError(null);
@@ -188,10 +197,10 @@ function AddEntryDialog({
         entrantMode === "existing"
           ? { mode: "existing" as const, id: selected!.id }
           : { mode: "new" as const, data: newEntrant },
-      selection:
-        selectionMode === "individual"
-          ? { mode: "individual" as const, quantity: individualQty }
-          : { mode: "package" as const, packageId },
+      selection: {
+        packageId: selectedPkg ? selectedPkg.id : undefined,
+        individualQty: indivQtyNum > 0 ? indivQtyNum : undefined,
+      },
       donationAmount: donation || undefined,
       paymentRef: paymentRef || undefined,
     };
@@ -250,15 +259,14 @@ function AddEntryDialog({
           />
 
           <SelectionSection
-            mode={selectionMode}
-            onModeChange={setSelectionMode}
-            individualQty={individualQty}
-            onIndividualQtyChange={setIndividualQty}
             packages={packages}
             packageId={packageId}
             onPackageIdChange={setPackageId}
-            entryCost={entryCost}
-            hasPackages={hasPackages}
+            individualQty={individualQty}
+            onIndividualQtyChange={setIndividualQty}
+            individualRate={individualRate}
+            isProrated={selectedPkg !== null}
+            totalQty={totalQty}
           />
 
           <div className="grid grid-cols-2 gap-3">
@@ -512,64 +520,66 @@ function EntrantSection({
 }
 
 interface SelectionSectionProps {
-  mode: SelectionMode;
-  onModeChange: (m: SelectionMode) => void;
-  individualQty: string;
-  onIndividualQtyChange: (s: string) => void;
   packages: PackageOption[];
   packageId: string;
   onPackageIdChange: (id: string) => void;
-  entryCost: string;
-  hasPackages: boolean;
+  individualQty: string;
+  onIndividualQtyChange: (s: string) => void;
+  individualRate: number;
+  isProrated: boolean;
+  totalQty: number;
 }
 
 function SelectionSection({
-  mode,
-  onModeChange,
-  individualQty,
-  onIndividualQtyChange,
   packages,
   packageId,
   onPackageIdChange,
-  entryCost,
-  hasPackages,
+  individualQty,
+  onIndividualQtyChange,
+  individualRate,
+  isProrated,
+  totalQty,
 }: SelectionSectionProps) {
+  const indivLabel = isProrated ? "Extra tickets" : "Individual tickets";
+  // Base UI's <SelectValue> renders the raw value unless the Select.Root is
+  // given an `items` map of value → label. Without this, picking a package
+  // leaves the cuid showing in the trigger.
+  const selectItems: Record<string, string> = {
+    [NO_PACKAGE]: "No package",
+    ...Object.fromEntries(
+      packages.map((pkg) => [
+        pkg.id,
+        `${pkg.label} — ${pkg.quantity} for ${pkg.cost}`,
+      ]),
+    ),
+  };
   return (
     <div className="space-y-3">
-      <Label>What they're buying</Label>
-      <div className="flex gap-2 text-sm">
-        <button
-          type="button"
-          onClick={() => onModeChange("individual")}
-          className={
-            "rounded-md border px-3 py-2 transition " +
-            (mode === "individual"
-              ? "border-primary bg-primary/5"
-              : "hover:bg-muted/50")
-          }
-        >
-          Individual entries
-        </button>
-        <button
-          type="button"
-          onClick={() => onModeChange("package")}
-          disabled={!hasPackages}
-          className={
-            "rounded-md border px-3 py-2 transition " +
-            (mode === "package"
-              ? "border-primary bg-primary/5"
-              : "hover:bg-muted/50") +
-            (!hasPackages ? " cursor-not-allowed opacity-50" : "")
-          }
-        >
-          Package
-          {!hasPackages && (
-            <span className="ml-1 text-xs">(none active)</span>
-          )}
-        </button>
-      </div>
-
-      {mode === "individual" ? (
+      <Label>What they&apos;re buying</Label>
+      {packages.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Package</p>
+          <Select
+            value={packageId}
+            items={selectItems}
+            onValueChange={(value) => onPackageIdChange(value ?? NO_PACKAGE)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_PACKAGE}>No package</SelectItem>
+              {packages.map((pkg) => (
+                <SelectItem key={pkg.id} value={pkg.id}>
+                  {`${pkg.label} — ${pkg.quantity} for ${pkg.cost}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">{indivLabel}</p>
         <div className="flex items-center gap-3">
           <Input
             inputMode="numeric"
@@ -578,25 +588,17 @@ function SelectionSection({
             className="w-24"
           />
           <span className="text-sm text-muted-foreground">
-            × {entryCost} each
+            × {individualRate.toFixed(2)} each
+            {isProrated && (
+              <span className="ml-1 text-xs">(package rate)</span>
+            )}
           </span>
         </div>
-      ) : (
-        <Select
-          value={packageId}
-          onValueChange={(value) => onPackageIdChange(value ?? "")}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {packages.map((pkg) => (
-              <SelectItem key={pkg.id} value={pkg.id}>
-                {pkg.label} — {pkg.quantity} for {pkg.cost}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      </div>
+      {totalQty > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {totalQty} {totalQty === 1 ? "entry" : "entries"} total
+        </p>
       )}
     </div>
   );

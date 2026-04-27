@@ -153,7 +153,8 @@ export async function updateEntrant(
   return { ok: true };
 }
 
-// Used by the entry-creation typeahead in Phase 1g.
+// Used by the entry-creation typeahead in Phase 1g and the tablet-capture
+// entrant step in Phase 3b.
 export async function searchEntrants(q: string, limit = 10) {
   await requireRole("STAFF");
   if (!q.trim()) return [];

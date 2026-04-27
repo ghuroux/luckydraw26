@@ -258,13 +258,14 @@ model Entry {
   ticketNumber    Int           // sequential per event; preserved even when voided (no renumbering)
   packageId       String?
   packageEntryNum Int?          // position within the package (1..quantity)
-  donationAmount  Decimal?      @db.Decimal(10, 2)
-  paymentRef      String?       // free-text from tablet flow; defaults to "CASH" if blank on tablet submit
-  paidAt          DateTime?     // null = unreconciled (typically PUBLIC source); set automatically for ADMIN/TABLET when ref captured
-  voidedAt        DateTime?     // soft-delete: voided entries are excluded from draws but kept for audit
-  voidReason      String?       // free-text, captured at void time
-  source          EntrySource   @default(ADMIN)
-  createdAt       DateTime      @default(now())
+  donationAmount  Decimal?       @db.Decimal(10, 2)
+  paymentRef      String?        // free-text reference (card slip number, EFT ref, operator notes); optional even when paid
+  paymentMethod   PaymentMethod? // captured at the tablet flow; null on PUBLIC entries and on unreconciled admin entries
+  paidAt          DateTime?      // null = unreconciled (typically PUBLIC source); always set on TABLET (operator picks CASH/CARD before submit)
+  voidedAt        DateTime?      // soft-delete: voided entries are excluded from draws but kept for audit
+  voidReason      String?        // free-text, captured at void time
+  source          EntrySource    @default(ADMIN)
+  createdAt       DateTime       @default(now())
 
   event           Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
   entrant         Entrant       @relation(fields: [entrantId], references: [id])
@@ -280,6 +281,11 @@ enum EntrySource {
   ADMIN     // staff entered via dashboard
   TABLET    // captured via tablet flow at the event
   PUBLIC    // submitted via public portal
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
 }
 
 model Prize {
@@ -470,7 +476,7 @@ Notable changes from v1:
 **Add (admin form, `/events/[id]` entry tab)**:
 - Search-as-you-type entrant by name/email/phone
 - If found, select; if not, "Create new entrant" inline (with sponsor-share + SMS opt-in checkboxes)
-- Choose individual entry, package, or both
+- Choose a package, individual entries, or both (combos use the package's prorated per-ticket rate for extras — see tablet Step 3)
 - Optional donation amount
 - Optional payment reference (sets `paidAt` if provided)
 - On submit, server allocates `ticketNumber = max + 1` for that event in a transaction
@@ -483,9 +489,9 @@ Fullscreen, simplified UI tuned for iPad portrait. Touch-friendly (large tap tar
 Five-step flow:
 
 - **Step 1 — Landing**: persistent home screen the seller returns to between captures. Shows event name, prize summary (top 3 prizes with thumbnails when images are wired in Phase 5), entry pricing (single + active packages), live total entries sold. Single big CTA: "Sell ticket".
-- **Step 2 — Entrant details**: capture first name, last name, email, phone, sponsor-share + SMS opt-ins. As the email is typed, do a debounced lookup; if it matches an existing entrant, show a **"Welcome back, {firstName}"** card with their details pre-filled and locked (Change button to edit) so the seller can skip past confirmation. New entrant fields appear inline when no match.
-- **Step 3 — Selection**: pick package or N individual entries; show live running total at the bottom of the screen.
-- **Step 4 — Payment handover**: shows amount due + a payment reference input. Copy: "Hand the device to the customer for payment, then enter the reference." If the seller leaves the ref blank and submits, it defaults to **`CASH`** (entry still marked paid — `paidAt = now()`).
+- **Step 2 — Entrant details**: a single touch-friendly search field at the top, debounced against `searchEntrants` (matches name + email + phone). Results render below as tappable cards showing **full name + email** (and phone when present). The seller asks the customer for their name; common case is one tap to select. Tapping a card shows the **"Welcome back, {firstName}"** card with their details pre-filled and locked (Change button returns to the search). A persistent "Add as new entrant" tile beneath the results reveals an inline new-entrant form (first name, last name, email, phone, sponsor-share + SMS opt-ins). The pure-email autocomplete used in v1 was abandoned here because customers volunteer their name first, not their email.
+- **Step 3 — Selection**: package + individual entries are independent and combinable. Tap a package card to select it (or none), and use the always-live stepper to add N single tickets. When a package is selected, *extra* individual tickets price at the **package's prorated per-ticket rate** (`pkg.cost / pkg.quantity`) — e.g. a "1000 for R2000" package puts extras at R2 each, not the event's regular `entryCost`. Without a package, individuals price at `entryCost` as before. All entries — package + extras — are persisted (each gets its own ticket number) so they all participate in the draw. Live running total displayed at the bottom of the screen.
+- **Step 4 — Payment handover**: shows amount due + a discrete **CASH / CARD** chooser (operator must pick one before Confirm enables) + an optional payment reference input (card slip number, etc.). Copy: "Hand the device to the customer for payment, then capture the method." On submit, `paymentMethod` is stored on every created Entry, `paidAt = now()` regardless of whether a reference was provided. The earlier "default blank ref to `CASH`" rule is superseded by the explicit method picker.
 - **Step 5 — Confirmation**: shows the assigned ticket numbers ("Tickets #18–#22 for Jane Doe"), the running event-day total, and two CTAs: "Capture another entry" (returns to Step 1) and "Done" (returns to Step 1 after a 5-second auto-advance).
 
 On submit, `paidAt` is set to `now()` and `source = TABLET`. Entries appear immediately in the admin entries list and the entrant's profile (revalidatePath fires on those routes).
@@ -866,12 +872,11 @@ We build this together; each phase is a checkpoint where the app is usable.
 - Presentation mode (`/events/[id]/presentation`) — full-bleed mirror via SSE, snapshot recovery on reconnect
 - "Send winner email" button stub (no-op + "coming in Phase 4" toast)
 
-### Phase 3 — Tablet capture
-- `/events/[id]/tablet-capture` route — touch-friendly, full-bleed
-- Five-step flow: Landing → Entrant (with welcome-back lookup) → Selection → Payment handover → Confirmation
-- Cash sales: blank payment ref defaults to `CASH` and still marks `paidAt = now()`
-- Returning-entrant detection by email with "Welcome back, {firstName}" prefill
-- Idle auto-logout via `TABLET_IDLE_LOGOUT_MINUTES` env var (default 15) — returns to login, not landing
+### Phase 3 — Tablet capture ✅
+- `/events/[id]/tablet-capture` route — touch-friendly, full-bleed (lives outside the `(admin)` route group; URL unchanged)
+- Five-step flow: Landing → Entrant (search by name/email/phone) → Selection (package + extras combinable, prorated rate) → Payment handover (CASH/CARD) → Confirmation (auto-back-to-landing in 5s)
+- Payment method captured discretely as `Entry.paymentMethod` (`CASH | CARD` enum); `source = TABLET` forces `paidAt = now()`
+- Idle auto-logout via `TABLET_IDLE_LOGOUT_MINUTES` env var (default 15, fractional allowed, 0 disables) — calls `authClient.signOut()` then redirects to `/login`
 
 ### Phase 4 — Email
 - `lib/email.ts` — NodeMailer + SendGrid SMTP wrapper, EmailLog write-on-attempt
