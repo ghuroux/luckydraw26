@@ -10,17 +10,17 @@ A monthly charity lucky draw application originally built ~2 years ago in Next.j
 
 ## Current status
 
-**Phase 1 shipped end-to-end.** App now drives the full event lifecycle: org settings, event CRUD with tabs (Overview / Entries / Prizes / Packages), prize + package management, lifecycle transitions (open/close/reopen), entrant list + profile + CSV export, admin entry creation with sequential ticket allocation, audit logging across every mutation. **Next**: Phase 2 (the draw).
+**Phase 2 shipped end-to-end.** The draw experience is live and projection-ready: crypto-strong RNG with pool-of-10 reveal + eligibility filter + pool-exhaustion fallback, SSE pub/sub with last-event-id replay, single-column reveal animation with piecewise easing across 4 phases (~7.5s total), Howler-driven audio (4 SFX + mute toggle), canvas-confetti, admin draw page with sonner toasts (Start/Test/Lock/Redraw/Clear/email-stub), test-draw rehearsal mode with TEST watermark, and presentation mode at `/events/[id]/presentation` with snapshot recovery on mount + live SSE mirror. **Next**: Phase 3 (tablet capture).
 
-The spec was refreshed (commit `44e8f85`) to make Phases 2-7 buildable: pool-of-10 reveal algorithm, single-column premium animation brief, SSE auth pattern, SendGrid via SMTP, storage driver interface, soft-delete entries, currency/locale/timezone on Organisation, POPIA anonymisation, and more. **Read `V2_SPEC.md §8.7` and the Phase 2 build-phase entry before starting Phase 2.**
+Three pieces of doc-debt reconciled at chunk close (commit pending in this session): `V2_SPEC.md §8.7` now reflects the 7.5s timing (was 6s), the corrected `clearWinner` semantics (unlocks an already-locked prize, not a no-op), and SoundBible as the actual audio source (Pixabay/Mixkit blocked WebFetch).
 
 Phases (from `V2_SPEC.md §13`):
 - 0. Foundations — ✅ done
 - 1. Events & entrants core — ✅ done (1a–1g; 1h hygiene deferred)
-- 2. The draw — ⏳ next
-- 3. Tablet capture
+- 2. The draw — ✅ done (2a–2f)
+- 3. Tablet capture — ⏳ next
 - 4. Email
-- 5. Public portal + reconciliation (introduces schema migration: `Event.publicDescriptionHtml`, `Entry.voidedAt/voidReason`, `PublicEntryRateLimit`, `ENTRY_VOIDED`/`ENTRY_UNVOIDED`)
+- 5. Public portal + reconciliation (introduces schema migration: `Event.publicDescriptionHtml`, `Entry.voidedAt/voidReason`, `PublicEntryRateLimit`, `ENTRY_VOIDED`/`ENTRY_UNVOIDED`; **also surface SoundBible attribution** per Phase 2 audio sourcing)
 - 6. Themability + polish (introduces schema migration: `Organisation.currencyCode/locale/timezone`, `Entrant.deletedAt`, `ENTRANT_DELETED`)
 - 7. Hardening (ship-ready gate)
 
@@ -57,6 +57,15 @@ npm run seed:superadmin              # bootstrap first SUPERADMIN from .env
 - **Entry creation is OPEN-only.** DRAFT events accept no entries (server returns "Event is still in setup — open it before adding entries"). Same gate in the UI hides the Add Entry button.
 - **Sequential ticket allocation** uses a transaction with retry-on-unique-conflict (up to 3 attempts) — see `lib/actions/entry.ts` `createEntry`. We do *not* use SERIALIZABLE isolation; the unique constraint + cheap retry covers the actual concurrency we expect.
 - **Form prefill in dialogs**: use RHF's `values` prop (not `defaultValues`) so the dialog re-syncs when the editing target changes. See `PrizesManager.PrizeDialog`.
+- **Underscore-prefixed folders are private in Next.js routing.** `app/api/_dev/foo/route.ts` will silently 404 — the `_dev` folder is excluded from routing entirely. Either pick a non-underscore name (`/api/dev/...`) or use parens for route groups (`/api/(dev)/...`, doesn't add to URL). Found this trying to ship a throwaway dev-only POST endpoint in Phase 2b.
+- **SSE in-process pub/sub stashes channels on `globalThis`** (`__luckyDrawSseChannels` Map keyed by event-id). Without this, Next.js dev HMR wipes in-flight subscribers when a route module reloads. See `lib/sse.ts`. Each channel has an `EventEmitter` + a 50-event ring buffer for `Last-Event-ID` replay.
+- **`<DrawStage>` remount key for SSE-driven flows**: `PresentationStage` uses a monotonic `revealKey` counter, not `${prizeId}-${attempt}`. React batches back-to-back `draw_started` + `draw_winner_revealed` `setPhase` calls into a single render — the intermediate `preparing` state never paints, the attempt counter resets through it invisibly, and the key would collide with the previous reveal's key. `landed=true` from the previous animation then carries over and `<WinnerCard>` appears mid-spin. Always-incrementing counter solves it cleanly.
+- **`<NameReel>` `onLanded` / `onPhaseChange` captured in refs**, not in the animation effect's deps. The parent re-rendering when the winner card cross-fades in changes callback identity → effect deps change → cleanup cancels the RAF → effect re-runs → new animation starts from `t=0`. Looks like the reel "restarts" right after landing. Ref pattern keeps the latest callback reachable without re-triggering the effect.
+- **Howler is client-only** (touches `window`/`AudioContext` at import). `components/draw/sounds.ts` is a `"use client"` singleton module — Howl instances live there so they're loaded once and reused across `<DrawStage>` mounts. Mute state is mirrored to `localStorage` (`luckydraw.muted`) and `Howler.mute(...)`.
+- **Browser autoplay policy** silences audio until a user gesture. Admin draw page is fine — clicking Start counts. Presentation tab stays silent unless someone clicks on it; this is acceptable per the spec because the admin laptop drives the room audio.
+- **Sound asset sourcing**: SoundBible's `https://soundbible.com/grab.php?id=XXX&type=mp3` endpoints return real MP3 files via plain `curl` (Pixabay and Mixkit blocked WebFetch with 403). Most SoundBible sounds are CC-Attribution 3.0 — Phase 5 needs a credit somewhere user-facing. See `public/sounds/LICENSES.md` for per-file provenance + 8 swap-in alternates in `_alternates/`.
+- **Toast UX via sonner**: `<Toaster richColors closeButton />` mounted in the root layout (`app/layout.tsx`). Use `import { toast } from "sonner"` then `toast.success(...)` / `toast.error(...)` / `toast.info(...)`. The shadcn wrapper at `components/ui/sonner.tsx` themes it.
+- **Test fixtures**: `npx tsx --env-file=.env scripts/seed-test-fixtures.ts` seeds three events (OPEN with full data + DRAFT empty + DRAWN with locked winners) plus 25 named entrants under `@fixtures.luckydraw.local`. Idempotent (skips events whose name already exists). `--clean` removes the fixture events (cascading) and any fixture entrants no longer referenced.
 
 ## Conventions
 

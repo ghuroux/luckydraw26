@@ -528,18 +528,18 @@ We're **not** rebuilding v1's three-column arcade slot machine. The v2 reveal is
 - **Layout**: full-bleed dark surface, single centred column ~60% of viewport height, taking up the full width responsively (and 16:9 in presentation mode). Generous breathing room.
 - **Type**: large semi-bold display type (Geist or a complementary display face), high contrast against the surface, names rendered legibly throughout — no blur until the very fast portion.
 - **Pool**: server returns the winning entry ID **plus a pool of 10 real entrant names** (the winner is one of the 10; the other 9 are randomly sampled from the rest of the event's entrants). When the event has fewer than 10 unique entrants, the pool repeats — never falls below 10 frames so the animation feels full.
-- **Sequence** (~6 seconds total):
-  1. **Spin-up** (~0.5s) — names accelerate from a slow scroll to fast vertical motion, slight upward easing
-  2. **Race** (~3.5s) — names blur slightly as they fly past at peak speed; ambient rhythmic ticks per pass
-  3. **Slow-down** (~1.5s) — exponential deceleration; ticks lengthen and lower in pitch; names regain legibility
-  4. **Land** (~0.5s) — final settling onto the winner with a satisfying chime and a subtle scale-up
+- **Sequence** (~7.5 seconds total — settled on these timings after live iteration):
+  1. **Spin-up** (~2s, 8% of distance, `easeInQuad`) — names accelerate from near-stationary to peak speed; the deliberately slow start builds suspense and lets the audience read 5–7 names before the blur
+  2. **Race** (~3.5s, 86% of distance, linear) — names blur slightly (3px) as they fly past at peak speed; ambient rhythmic ticks per pass
+  3. **Slow-down** (~1.5s, 5% of distance, `easeOutCubic`) — exponential deceleration; blur drops to 1px then off; names regain legibility
+  4. **Land** (~0.5s, 1% of distance, `easeOutBack`) — final settling onto the winner with a satisfying chime and a subtle bounce
   5. **Reveal** — winner card cross-fades in below: full name, ticket number, prize name; confetti burst from the card edges
 - **Reduced-motion**: respect `prefers-reduced-motion` — replace the scroll with a 3-second cross-fade through the 10 names ending on the winner; no blur, no scale.
 - **Components**: split into `<DrawStage>` (orchestration), `<NameReel>` (the scrolling column), `<WinnerCard>` (the reveal), `<ConfettiLayer>` (canvas-confetti). Each ≤200 lines.
 
 #### Sound design
 
-The reveal needs to feel *expensive* — not arcade. Premium royalty-free sound effects from a curated library (Freesound CC0, Zapsplat free tier, or similar). v1's `_v1/public/sounds/` files are a starting reference but are likely too "Vegas" for this brief — evaluate and replace where they don't match the gala feel.
+The reveal needs to feel *expensive* — not arcade. Premium royalty-free sound effects from a curated library. v1's `_v1/public/sounds/` files were too "Vegas" and mostly placeholder anyway — replaced wholesale.
 
 Required sounds:
 - `spin-loop.mp3` — looped ambient tick during race, ~0.5s loop
@@ -547,7 +547,9 @@ Required sounds:
 - `land.mp3` — single satisfying chime on landing (warm bell, not coin-clatter)
 - `winner.mp3` — celebratory swell for the reveal (~2s, building, sparkles)
 
-Audio respects an in-app mute toggle (persisted in localStorage) and the OS-level mute. Howler.js (already in v1's deps) handles the playback.
+Current files were sourced from [SoundBible.com](https://soundbible.com) via direct curl of `grab.php` endpoints (Pixabay/Mixkit blocked WebFetch with bot protection). Most SoundBible sounds are **CC Attribution 3.0** — Phase 5's public portal needs a SoundBible credit somewhere visible. See `public/sounds/LICENSES.md` for per-file provenance and 8 alternates in `_alternates/` for swapping if a pick lands wrong.
+
+Audio respects an in-app mute toggle (persisted in localStorage `luckydraw.muted`) and the OS-level mute (Howler honours it via the AudioContext). Howler.js handles the playback.
 
 #### Presentation mode (`/events/[id]/presentation`) — for projection
 
@@ -571,9 +573,11 @@ Audio respects an in-app mute toggle (persisted in localStorage) and the OS-leve
 
 #### Redraw / clear winner
 
-- `POST /api/events/[id]/prizes/[prizeId]/clear-winner` — only if `lockedAt` is null; ADMIN only
+- **`clearWinner(prizeId)` server action** (in `lib/actions/draw.ts`, not a separate REST route — Phase 2 conventionalised mutations as server actions); ADMIN only
+- Only proceeds if `lockedAt is not null` — i.e. unlocks an already-locked prize back to draw-able state. Returns `{ ok: false, error: "This prize is not locked in." }` if the prize was never locked. (The earlier spec text said "only if lockedAt is null" — that was internally inconsistent: pre-lock there's nothing to clear.)
+- Sets `winningEntryId = null` and `lockedAt = null` atomically via `updateMany` with a `lockedAt: { not: null }` guard
 - Audit-logged as `WINNER_CLEARED`
-- Triggers an SSE `winner_cleared` event so presentation mode resets the prize card
+- Triggers an SSE `winner_cleared` event so presentation mode drops back to idle for that prize
 
 #### Test draw mode (rehearsal before going live)
 
