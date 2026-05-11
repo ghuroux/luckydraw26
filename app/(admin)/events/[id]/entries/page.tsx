@@ -1,31 +1,19 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { EntrySource } from "@prisma/client";
 
 import { getEvent } from "@/lib/actions/event";
-import { listEntries } from "@/lib/actions/entry";
+import { listEntrantSummariesForEvent } from "@/lib/actions/entry";
 import { listPackages } from "@/lib/actions/package";
-import { EmptyState, Pagination, StatusBadge } from "@/components/shell";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { entrySourceLabel, entrySourceTone } from "@/lib/entry-status";
-import { formatMoney } from "@/lib/money";
-import { parsePageParam } from "@/lib/pagination";
+import { EmptyState } from "@/components/shell";
 import { AddEntryButton } from "./AddEntryButton";
 import { EntriesFilters } from "./EntriesFilters";
+import { EntrantEntriesTable } from "./EntrantEntriesTable";
 
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{
     paid?: string;
     source?: string;
-    page?: string;
   }>;
 }
 
@@ -49,10 +37,9 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
     sp.source && SOURCE_OPTIONS.includes(sp.source as EntrySource | "ALL")
       ? (sp.source as EntrySource | "ALL")
       : "ALL";
-  const page = parsePageParam(sp.page);
 
-  const [{ entries, pagination }, allPackages] = await Promise.all([
-    listEntries({ eventId: id, paidFilter, source, page }),
+  const [{ entrants, total }, allPackages] = await Promise.all([
+    listEntrantSummariesForEvent({ eventId: id, paidFilter, source }),
     listPackages(id),
   ]);
   const activePackages = allPackages.filter((p) => p.isActive);
@@ -60,22 +47,28 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
   const canAdd = event.status === "OPEN";
   const hasFilters = paidFilter !== "ALL" || source !== "ALL";
 
-  const buildUrl = (p: number) => {
-    const qs = new URLSearchParams();
-    if (paidFilter !== "ALL") qs.set("paid", paidFilter);
-    if (source !== "ALL") qs.set("source", source);
-    if (p > 1) qs.set("page", String(p));
-    const s = qs.toString();
-    return s ? `/events/${event.id}/entries?${s}` : `/events/${event.id}/entries`;
-  };
+  const totalTickets = entrants.reduce((sum, e) => sum + e.ticketCount, 0);
+  const totalUnpaid = entrants.reduce((sum, e) => sum + e.unpaidCount, 0);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <p className="text-sm text-muted-foreground">
-            <span className="font-mono tabular-nums">{pagination.total}</span>{" "}
-            {pagination.total === 1 ? "entry" : "entries"}
+            <span className="font-mono tabular-nums">{total}</span>{" "}
+            {total === 1 ? "entrant" : "entrants"}
+            {" · "}
+            <span className="font-mono tabular-nums">{totalTickets}</span>{" "}
+            {totalTickets === 1 ? "ticket" : "tickets"}
+            {totalUnpaid > 0 && (
+              <>
+                {" · "}
+                <span className="font-mono tabular-nums text-amber-700 dark:text-amber-300">
+                  {totalUnpaid}
+                </span>{" "}
+                unpaid
+              </>
+            )}
             {paidFilter !== "ALL" ? ` · ${paidFilter.toLowerCase()}` : ""}
             {source !== "ALL" ? ` · via ${source.toLowerCase()}` : ""}
           </p>
@@ -100,9 +93,9 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
         source={source}
       />
 
-      {entries.length === 0 ? (
+      {entrants.length === 0 ? (
         <EmptyState
-          title={hasFilters ? "No entries match those filters." : "No entries yet."}
+          title={hasFilters ? "No entrants match those filters." : "No entries yet."}
           description={
             hasFilters
               ? "Try clearing the filters."
@@ -114,76 +107,7 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/8">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-surface-sunken/60 hover:bg-surface-sunken/60">
-                <TableHead className="w-20">Ticket</TableHead>
-                <TableHead>Entrant</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Package</TableHead>
-                <TableHead>Paid</TableHead>
-                <TableHead className="text-right">Donation</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-mono tabular-nums text-muted-foreground">
-                    #{entry.ticketNumber}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/entrants/${entry.entrant.id}`}
-                      className="hover:text-primary"
-                    >
-                      {entry.entrant.firstName} {entry.entrant.lastName}
-                    </Link>
-                    <p className="font-mono text-xs font-normal text-muted-foreground">
-                      {entry.entrant.email}
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge tone={entrySourceTone(entry.source)}>
-                      {entrySourceLabel(entry.source)}
-                    </StatusBadge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {entry.package
-                      ? `${entry.package.label} (${entry.packageEntryNum}/${entry.package.label.match(/\d+/)?.[0] ?? "?"})`
-                      : "—"}
-                  </TableCell>
-                  <TableCell>
-                    {entry.paidAt ? (
-                      <StatusBadge tone="success" dot>
-                        Paid
-                      </StatusBadge>
-                    ) : (
-                      <StatusBadge tone="warning" dot>
-                        Unpaid
-                      </StatusBadge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
-                    {entry.donationAmount
-                      ? formatMoney(String(entry.donationAmount))
-                      : "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {pagination.totalPages > 1 && (
-        <Pagination
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          hasPrev={pagination.hasPrev}
-          hasNext={pagination.hasNext}
-          buildUrl={buildUrl}
-        />
+        <EntrantEntriesTable eventId={event.id} entrants={entrants} />
       )}
     </div>
   );
