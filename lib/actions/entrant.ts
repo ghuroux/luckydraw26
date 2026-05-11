@@ -153,6 +153,65 @@ export async function updateEntrant(
   return { ok: true };
 }
 
+export async function createEntrant(
+  input: EntrantInput,
+): Promise<ActionResult<{ id: string }>> {
+  await requireRole("STAFF");
+
+  const parsed = entrantInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Validation failed.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors as Record<
+        string,
+        string[]
+      >,
+    };
+  }
+
+  const data = parsed.data;
+  let created;
+  try {
+    created = await db.entrant.create({
+      data: {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone || null,
+        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+        sponsorShareOptIn: data.sponsorShareOptIn,
+        smsOptIn: data.smsOptIn,
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Unique constraint")) {
+      return {
+        ok: false,
+        error: "Another entrant already uses that email address.",
+        fieldErrors: {
+          email: ["Another entrant already uses that email address."],
+        },
+      };
+    }
+    throw err;
+  }
+
+  await logAudit({
+    action: "ENTRANT_CREATED",
+    entityType: "Entrant",
+    entityId: created.id,
+    metadata: {
+      email: data.email,
+      name: `${data.firstName} ${data.lastName}`,
+    },
+  });
+
+  revalidatePath("/entrants");
+  return { ok: true, data: { id: created.id } };
+}
+
 // Used by the entry-creation typeahead in Phase 1g and the tablet-capture
 // entrant step in Phase 3b.
 export async function searchEntrants(q: string, limit = 10) {

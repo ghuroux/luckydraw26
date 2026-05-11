@@ -5,6 +5,7 @@ import { listEntrants } from "@/lib/actions/entrant";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState, PageHeader, Pagination } from "@/components/shell";
 import { parsePageParam } from "@/lib/pagination";
+import { AddEntrantButton } from "./AddEntrantButton";
 import { EntrantsFilters } from "./EntrantsFilters";
 import { EntrantsTable } from "./EntrantsTable";
 
@@ -42,13 +43,16 @@ export default async function EntrantsPage({ searchParams }: PageProps) {
           </>
         }
         actions={
-          <Link
-            href="/api/entrants/export"
-            className={buttonVariants({ variant: "outline" })}
-            download
-          >
-            Export CSV
-          </Link>
+          <>
+            <Link
+              href="/api/entrants/export"
+              className={buttonVariants({ variant: "outline" })}
+              download
+            >
+              Export CSV
+            </Link>
+            <AddEntrantButton />
+          </>
         }
       />
 
@@ -61,7 +65,7 @@ export default async function EntrantsPage({ searchParams }: PageProps) {
           description={
             search
               ? "Try a different name, email, or phone."
-              : "Entrants are created the first time they're added to an event."
+              : "Entrants are created the first time they're added to an event. You can also pre-load them with the Add entrant button above."
           }
         />
       ) : (
