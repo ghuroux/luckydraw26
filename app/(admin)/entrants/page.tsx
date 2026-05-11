@@ -8,6 +8,7 @@ import { parsePageParam } from "@/lib/pagination";
 import { AddEntrantButton } from "./AddEntrantButton";
 import { EntrantsFilters } from "./EntrantsFilters";
 import { EntrantsTable } from "./EntrantsTable";
+import { ImportEntrantsButton } from "./ImportEntrantsButton";
 
 interface PageProps {
   searchParams: Promise<{
@@ -51,6 +52,7 @@ export default async function EntrantsPage({ searchParams }: PageProps) {
             >
               Export CSV
             </Link>
+            <ImportEntrantsButton />
             <AddEntrantButton />
           </>
         }

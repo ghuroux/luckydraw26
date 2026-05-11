@@ -68,7 +68,7 @@ export function EntrantProfile({ entrant }: Props) {
             label="Date of birth"
             value={
               entrant.dateOfBirth
-                ? new Date(entrant.dateOfBirth).toLocaleDateString(undefined, {
+                ? new Date(entrant.dateOfBirth).toLocaleDateString("en-ZA", {
                     year: "numeric",
                     month: "long",
                     day: "numeric",

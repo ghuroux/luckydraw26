@@ -66,7 +66,7 @@ export function EntrantsTable({ entrants }: { entrants: EntrantRow[] }) {
                   {entrant._count.entries}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {new Date(lastActivity).toLocaleDateString(undefined, {
+                  {new Date(lastActivity).toLocaleDateString("en-ZA", {
                     year: "numeric",
                     month: "short",
                     day: "numeric",

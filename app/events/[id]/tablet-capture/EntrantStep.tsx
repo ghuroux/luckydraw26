@@ -5,11 +5,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { AlertCircle } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { searchEntrants } from "@/lib/actions/entrant";
+import {
+  captureEntrantContact,
+  searchEntrants,
+} from "@/lib/actions/entrant";
+import { isPlaceholderEmail, needsContactCapture } from "@/lib/entrant-contact";
 
 export type EntrantSelection =
   | {
@@ -90,6 +96,13 @@ export function EntrantStep({
   const [searching, setSearching] = useState(false);
   const searchSeq = useRef(0);
 
+  // Contact capture for existing entrants whose details are placeholders.
+  // Reset whenever a new entrant is selected.
+  const [captureEmail, setCaptureEmail] = useState("");
+  const [capturePhone, setCapturePhone] = useState("");
+  const [captureSubmitting, setCaptureSubmitting] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+
   const newForm = useForm<NewFormValues>({
     resolver: zodResolver(newEntrantSchema),
     defaultValues: {
@@ -130,6 +143,9 @@ export function EntrantStep({
 
   function selectMatch(match: SearchHit) {
     setView({ kind: "selected", match });
+    setCaptureEmail("");
+    setCapturePhone("");
+    setCaptureError(null);
   }
 
   function startNew() {
@@ -138,17 +154,60 @@ export function EntrantStep({
 
   function backToSearch() {
     setView({ kind: "searching" });
+    setCaptureEmail("");
+    setCapturePhone("");
+    setCaptureError(null);
   }
 
-  function submit() {
+  // Email validator that allows blank (since only ONE of email/phone is
+  // required) but rejects malformed addresses. Mirrors the server's refine.
+  const emailLooksValid =
+    captureEmail.trim() === "" || /^\S+@\S+\.\S+$/.test(captureEmail.trim());
+  const phoneLooksValid = capturePhone.trim().length >= 5;
+  const captureSatisfied =
+    (captureEmail.trim() !== "" && emailLooksValid) || phoneLooksValid;
+
+  async function submit() {
     if (view.kind === "selected") {
+      const needsCapture = needsContactCapture(view.match);
+
+      // Hard block: an entrant with no real contact route can't buy until
+      // the operator captures at least one. UI gating mirrors this, but the
+      // belt-and-braces guard keeps the contract clear.
+      if (needsCapture && !captureSatisfied) {
+        setCaptureError(
+          "Add a mobile number or email before continuing.",
+        );
+        return;
+      }
+
+      // Persist the captured contact info back to the Entrant so we don't
+      // ask again next time. Fire-and-forget would be ergonomic but we want
+      // to surface errors (e.g. email already used by another entrant).
+      let nextEmail = view.match.email;
+      let nextPhone = view.match.phone;
+      if (needsCapture) {
+        setCaptureSubmitting(true);
+        const result = await captureEntrantContact(view.match.id, {
+          email: captureEmail.trim() || undefined,
+          phone: capturePhone.trim() || undefined,
+        });
+        setCaptureSubmitting(false);
+        if (!result.ok) {
+          setCaptureError(result.error);
+          return;
+        }
+        if (captureEmail.trim()) nextEmail = captureEmail.trim();
+        if (capturePhone.trim()) nextPhone = capturePhone.trim();
+      }
+
       onNext({
         mode: "existing",
         id: view.match.id,
         firstName: view.match.firstName,
         lastName: view.match.lastName,
-        email: view.match.email,
-        phone: view.match.phone,
+        email: nextEmail,
+        phone: nextPhone,
       });
       return;
     }
@@ -169,7 +228,12 @@ export function EntrantStep({
     // view.kind === "searching" — nothing selected yet; do nothing.
   }
 
-  const canSubmit = view.kind !== "searching";
+  const selectedNeedsCapture =
+    view.kind === "selected" && needsContactCapture(view.match);
+  const canSubmit =
+    view.kind !== "searching" &&
+    !captureSubmitting &&
+    (!selectedNeedsCapture || captureSatisfied);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -200,7 +264,23 @@ export function EntrantStep({
           )}
 
           {view.kind === "selected" && (
-            <WelcomeBack match={view.match} onChange={backToSearch} />
+            <WelcomeBack
+              match={view.match}
+              onChange={backToSearch}
+              needsCapture={selectedNeedsCapture}
+              captureEmail={captureEmail}
+              capturePhone={capturePhone}
+              onCaptureEmailChange={(v) => {
+                setCaptureEmail(v);
+                setCaptureError(null);
+              }}
+              onCapturePhoneChange={(v) => {
+                setCapturePhone(v);
+                setCaptureError(null);
+              }}
+              captureError={captureError}
+              emailLooksValid={emailLooksValid}
+            />
           )}
 
           {view.kind === "new" && (
@@ -226,7 +306,7 @@ export function EntrantStep({
           disabled={!canSubmit}
           className="h-14 px-8 text-base"
         >
-          Next
+          {captureSubmitting ? "Saving…" : "Next"}
         </Button>
       </footer>
     </div>
@@ -294,11 +374,17 @@ function SearchView({
                   {hit.firstName} {hit.lastName}
                 </p>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
-                  {hit.email}
-                  {hit.phone && (
+                  {isPlaceholderEmail(hit.email) ? (
+                    hit.phone ?? <span className="italic">No contact yet</span>
+                  ) : (
                     <>
-                      <span className="mx-2">·</span>
-                      {hit.phone}
+                      {hit.email}
+                      {hit.phone && (
+                        <>
+                          <span className="mx-2">·</span>
+                          {hit.phone}
+                        </>
+                      )}
                     </>
                   )}
                 </p>
@@ -341,9 +427,23 @@ function SearchView({
 function WelcomeBack({
   match,
   onChange,
+  needsCapture,
+  captureEmail,
+  capturePhone,
+  onCaptureEmailChange,
+  onCapturePhoneChange,
+  captureError,
+  emailLooksValid,
 }: {
   match: SearchHit;
   onChange: () => void;
+  needsCapture: boolean;
+  captureEmail: string;
+  capturePhone: string;
+  onCaptureEmailChange: (v: string) => void;
+  onCapturePhoneChange: (v: string) => void;
+  captureError: string | null;
+  emailLooksValid: boolean;
 }) {
   return (
     <div className="rounded-lg border bg-primary/5 p-6">
@@ -355,13 +455,17 @@ function WelcomeBack({
           <p className="mt-2 truncate text-2xl font-semibold tracking-tight">
             {match.firstName} {match.lastName}
           </p>
-          <p className="mt-1 truncate text-base text-muted-foreground">
-            {match.email}
-          </p>
-          {match.phone && (
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {match.phone}
-            </p>
+          {!needsCapture && (
+            <>
+              <p className="mt-1 truncate text-base text-muted-foreground">
+                {match.email}
+              </p>
+              {match.phone && (
+                <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                  {match.phone}
+                </p>
+              )}
+            </>
           )}
         </div>
         <Button
@@ -374,6 +478,77 @@ function WelcomeBack({
           Change
         </Button>
       </div>
+
+      {needsCapture && (
+        <div className="mt-5 space-y-4 border-t border-primary/20 pt-5">
+          <div className="flex items-start gap-2.5 text-sm">
+            <AlertCircle
+              className="mt-0.5 size-4 shrink-0 text-primary"
+              aria-hidden
+            />
+            <p>
+              We don&apos;t have a way to reach{" "}
+              <span className="font-medium">{match.firstName}</span> if they
+              win. Capture a mobile number (preferred) or email to continue.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="capture-phone" className="text-base">
+                Mobile number
+              </Label>
+              <Input
+                id="capture-phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="+27 …"
+                value={capturePhone}
+                onChange={(e) => onCapturePhoneChange(e.target.value)}
+                className="h-14 text-lg"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="capture-email" className="text-base">
+                Email{" "}
+                <span className="text-xs font-normal text-muted-foreground">
+                  (optional if phone given)
+                </span>
+              </Label>
+              <Input
+                id="capture-email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="name@example.com"
+                value={captureEmail}
+                onChange={(e) => onCaptureEmailChange(e.target.value)}
+                className={cn(
+                  "h-14 text-lg",
+                  !emailLooksValid &&
+                    "border-destructive focus-visible:ring-destructive/40",
+                )}
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            One of these is required. We&apos;ll save it to{" "}
+            <span className="font-medium">{match.firstName}</span>&apos;s
+            record so we don&apos;t need to ask again.
+          </p>
+
+          {captureError && (
+            <p className="rounded-md bg-destructive/10 p-2.5 text-sm text-destructive">
+              {captureError}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

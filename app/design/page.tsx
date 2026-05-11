@@ -396,7 +396,7 @@ export default function DesignPreviewPage() {
         </SectionBlock>
 
         <footer className="pt-8 pb-4 text-center text-xs text-muted-foreground">
-          Phase A foundations · {new Date().toLocaleDateString()}
+          Phase A foundations · {new Date().toLocaleDateString("en-ZA")}
         </footer>
       </div>
     </div>

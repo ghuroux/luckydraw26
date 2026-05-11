@@ -358,7 +358,7 @@ export function WinnerDrawManager({
                     </span>{" "}
                     · parked{" "}
                     <span className="font-mono tabular-nums">
-                      {new Date(w.wonAt).toLocaleTimeString(undefined, {
+                      {new Date(w.wonAt).toLocaleTimeString("en-ZA", {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}

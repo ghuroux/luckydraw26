@@ -105,7 +105,7 @@ function EventEntryGroup({ event, entries }: EventEntryGroupProps) {
         </Link>
         <span className="text-xs text-muted-foreground">
           {event.date
-            ? new Date(event.date).toLocaleDateString(undefined, {
+            ? new Date(event.date).toLocaleDateString("en-ZA", {
                 year: "numeric",
                 month: "short",
                 day: "numeric",

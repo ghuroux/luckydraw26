@@ -57,7 +57,7 @@ export function EventsTable({ events }: { events: EventRow[] }) {
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {event.date
-                    ? new Date(event.date).toLocaleDateString(undefined, {
+                    ? new Date(event.date).toLocaleDateString("en-ZA", {
                         year: "numeric",
                         month: "short",
                         day: "numeric",

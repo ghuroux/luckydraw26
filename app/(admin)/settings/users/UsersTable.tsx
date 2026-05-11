@@ -154,7 +154,7 @@ export function UsersTable({ users, currentUserId }: Props) {
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(u.createdAt).toLocaleDateString()}
+                    {new Date(u.createdAt).toLocaleDateString("en-ZA")}
                   </TableCell>
                   <TableCell className="text-right">
                     {isSelf ? null : (
