@@ -209,6 +209,7 @@ model Event {
   entryCost          Decimal       @db.Decimal(10, 2) @default(0)
   prizePool          Decimal?      @db.Decimal(10, 2)
   status             EventStatus   @default(DRAFT)
+  drawMode           DrawMode      @default(PRIZE_DRAW)  // see §8.7 — locked once any prize is locked
   drawnAt            DateTime?
 
   // Public portal
@@ -238,6 +239,11 @@ enum EventStatus {
   DRAWN
 }
 
+enum DrawMode {
+  PRIZE_DRAW    // operator selects each prize, reel reveals an entrant, prize locks to entry
+  WINNER_DRAW   // reel reveals an entrant for each open winner-slot; the winner picks a remaining prize at the stage
+}
+
 model EntryPackage {
   id        String   @id @default(cuid())
   eventId   String
@@ -264,6 +270,7 @@ model Entry {
   paidAt          DateTime?      // null = unreconciled (typically PUBLIC source); always set on TABLET (operator picks CASH/CARD before submit)
   voidedAt        DateTime?      // soft-delete: voided entries are excluded from draws but kept for audit
   voidReason      String?        // free-text, captured at void time
+  wonAt           DateTime?      // WINNER_DRAW deferred-prize parking marker — set by parkPendingWinner, cleared by selectPrizeForWinner on assignment
   source          EntrySource    @default(ADMIN)
   createdAt       DateTime       @default(now())
 
@@ -321,14 +328,19 @@ model PublicEntryRateLimit {
 }
 
 model EmailLog {
-  id        String   @id @default(cuid())
-  to        String
-  subject   String
-  template  String
-  context   Json
-  sentAt    DateTime?
-  error     String?
-  createdAt DateTime @default(now())
+  id             String    @id @default(cuid())
+  to             String
+  subject        String
+  template       String
+  context        Json
+  sentAt         DateTime?
+  error          String?
+  attempts       Int       @default(0)   // incremented per send attempt (Phase 4 retry semantics)
+  lastAttemptAt  DateTime?                // timestamp of most recent attempt
+  createdAt      DateTime  @default(now())
+
+  @@index([template, sentAt])
+  @@index([createdAt])
 }
 
 model AuditLog {
@@ -366,6 +378,8 @@ enum AuditAction {
   WINNER_LOCKED
   WINNER_CLEARED
   WINNER_NOTIFIED
+  WINNER_PARKED        // WINNER_DRAW only — entrant locked in as a winner with prize selection deferred
+  DRAW_ABORTED         // WINNER_DRAW only — operator re-spun before locking a prize (e.g. drawn winner left the venue)
   ENTRY_CREATED
   ENTRY_DELETED        // hard delete; rare, for pre-launch test cleanup
   ENTRY_VOIDED         // soft delete (sets voidedAt); the operational path post-launch
@@ -511,7 +525,13 @@ On submit, `paidAt` is set to `now()` and `source = TABLET`. Entries appear imme
 
 ### 8.7 Draw experience
 
-**Admin draw (`/events/[id]/draw`)** — for the operator:
+**Two draw modes** (per `Event.drawMode`, see §6):
+- **`PRIZE_DRAW`** (default): operator drives the draw prize-by-prize. For each prize, the reel reveals a winner and that prize locks to the entry.
+- **`WINNER_DRAW`**: operator draws winners in succession. Each reveal names an entrant; the entrant walks to the stage and picks from the remaining prizes; the operator (or a runner) taps the chosen prize to lock it. Slot count = number of unlocked prizes; loop until all are claimed.
+
+Mode is chosen at event creation, editable while no prize is locked, and **frozen once the first prize is locked** (server-side guard + form-side disable). The selection algorithm, reveal animation, sound design, and presentation mode are shared across modes — only the per-step interaction and the order of operations differ.
+
+**Admin draw — `PRIZE_DRAW` flow (`/events/[id]/draw`)** — for the operator:
 - Lists prizes with current status (no winner / winner / locked)
 - "Start draw for [Prize Name]" button per un-won prize
 - Triggers the reveal animation client-side, fed by a server-picked winner + name pool
@@ -519,6 +539,15 @@ On submit, `paidAt` is set to `now()` and `source = TABLET`. Entries appear imme
 - "Lock in winner" sets `Prize.lockedAt`, disables further redraws for that prize
 - "Redraw" picks a new winner (only if not locked)
 - "Send winner email" button — **Phase 2 ships as no-op stub** with a "coming in Phase 4" toast; Phase 4 wires it to NodeMailer + the EmailLog outbox
+
+**Admin draw — `WINNER_DRAW` flow** — same page, branched by `event.drawMode`:
+- Header reads "Drawing winner *N* of *M*" (M = total prizes; counter advances per locked prize *and* per parked winner)
+- Single CTA: "Draw next winner" (no per-prize buttons)
+- After the reveal, the winner card stays visible and a `<PrizePicker>` grid appears alongside it: every still-unlocked prize as a tappable tile, rank-ordered, with name + image + value
+- Operator taps the prize the actual winner just chose → confirm dialog ("Award **X** to **Y**?") → server locks `Prize.winningEntryId` + sets `lockedAt` → broadcasts `prize_selected` SSE event → winner card cross-fades into a winner-with-prize card
+- **"Re-spin"** button alongside the picker discards the pending entrant without persisting (used when a drawn winner has already left the venue); audit-logged as `DRAW_ABORTED`
+- **"Defer prize"** button alongside Re-spin records the entrant as a winner but skips the prize choice — sets `Entry.wonAt`, broadcasts `winner_parked`, audit-logs `WINNER_PARKED`. The entrant is excluded from future draws and surfaces in a "Pending prize allocation" section on the idle draw page; the operator picks their prize from there later via a dialog that calls `selectPrizeForWinner` (which clears `wonAt` on assignment)
+- Same lock-in race protection (`@unique` on `winningEntryId`) applies — a second admin's prize-tile tap fails with "This prize was just locked by another admin"
 
 #### Selection algorithm
 
@@ -567,7 +596,7 @@ Audio respects an in-app mute toggle (persisted in localStorage `luckydraw.muted
 
 #### SSE channel (`/api/events/[id]/stream`)
 
-- Events: `draw_started`, `draw_winner_revealed`, `winner_locked`, `winner_cleared`, `prize_updated`, plus `draw_test_started` / `draw_test_winner_revealed` for the test mode (separate event names so a rehearsal can never be confused for the real thing)
+- Events: `draw_started`, `draw_winner_revealed`, `winner_locked`, `winner_cleared`, `prize_updated`, plus `prize_selected` (`WINNER_DRAW` only — fires when the operator taps a prize tile after a reveal; payload `{ entryId, prizeId, prizeName }`), `draw_aborted` (`WINNER_DRAW` only — fires when the operator re-spins instead of locking; payload `{ abortedEntryId }`), `winner_parked` (`WINNER_DRAW` only — fires when the operator defers prize selection; payload `{ entryId, entrantDisplayName }`), plus `draw_test_started` / `draw_test_winner_revealed` for the test mode (separate event names so a rehearsal can never be confused for the real thing)
 - **Auth pattern**: validation happens *inside the route handler*, not at the edge middleware (Prisma can't run on the edge). The route handler:
   1. Calls `auth.api.getSession({ headers })` (server-side better-auth lookup)
   2. If no session or role < STAFF, returns `401` immediately and closes the stream
@@ -664,6 +693,8 @@ Templates:
 - `winner-notification` — sent when `Prize.lockedAt` is set, or manually re-triggered from the draw page
 - `user-invitation` — sent by SUPERADMIN invite flow (Phase 7-ish)
 - `password-reset` — better-auth's flow; we override the template render to keep brand consistency
+
+**Where to hook the winner-notification trigger** (Phase 4a + Phase 3.5 coordination): hook the send from inside `lockWinner` in `lib/actions/draw.ts` — that's the single point where `Prize.lockedAt` gets set. All four paths converge there: PRIZE_DRAW lock-in, WINNER_DRAW immediate prize pick (`selectPrizeForWinner` calls `lockWinner` internally), WINNER_DRAW deferred-then-assigned (same path, after `parkPendingWinner` set `Entry.wonAt` first), and any redraw + lock. **Do not hook upstream** of `lockWinner` (`startDraw`, `drawNextWinner`, `parkPendingWinner`) — those don't carry a prize, and a parked winner emphatically must not receive a "you won!" email until their prize is actually assigned.
 
 All templates render with the active org's logo + primary colour for brand consistency. The render call passes `{ organisation, ...templateContext }` so each template can pull `org.name`, `org.logoUrl`, `org.primaryColor`, `org.contactEmail`.
 
@@ -877,6 +908,15 @@ We build this together; each phase is a checkpoint where the app is usable.
 - Five-step flow: Landing → Entrant (search by name/email/phone) → Selection (package + extras combinable, prorated rate) → Payment handover (CASH/CARD) → Confirmation (auto-back-to-landing in 5s)
 - Payment method captured discretely as `Entry.paymentMethod` (`CASH | CARD` enum); `source = TABLET` forces `paidAt = now()`
 - Idle auto-logout via `TABLET_IDLE_LOGOUT_MINUTES` env var (default 15, fractional allowed, 0 disables) — calls `authClient.signOut()` then redirects to `/login`
+
+### Phase 3.5 — Draw mode (prize-led vs winner-led)
+- Migration: add `DrawMode` enum (`PRIZE_DRAW`, `WINNER_DRAW`), `Event.drawMode` column (default `PRIZE_DRAW`), `DRAW_ABORTED` audit action
+- Event create/edit form: segmented mode selector; disabled in edit form once any prize is locked, with tooltip
+- Server actions (`lib/actions/draw.ts`): `drawNextWinner({ eventId })` (reveal entrant, no lock), `selectPrizeForWinner({ eventId, entryId, prizeId })` (lock prize→entry, broadcast `prize_selected`), `abortPendingDraw({ eventId })` (audit-only)
+- New SSE event: `prize_selected` (payload `{ entryId, prizeId, prizeName }`)
+- `<DrawStage>` / `<PresentationStage>` branch on `event.drawMode`; new `awaiting_prize_selection` phase + `<PrizePicker>` + `<WinnerWithPrizeCard>` components
+- Presentation tab shows the remaining-prize grid **before the first draw** only (audience sees what's up for grabs); during/after draws it's just winner cards (no real-time grid updates)
+- Winner-email trigger from the eventual Phase 4 helper fires from both lock paths — same DB end-state in both modes
 
 ### Phase 4 — Email
 - `lib/email.ts` — NodeMailer + SendGrid SMTP wrapper, EmailLog write-on-attempt

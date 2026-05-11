@@ -6,7 +6,13 @@ function makeEntries(spec: { entrantId: string; name: string; tickets: number }[
   let id = 0;
   for (const s of spec) {
     for (let i = 0; i < s.tickets; i++) {
-      out.push({ id: `e${id++}`, entrantId: s.entrantId, entrantDisplayName: s.name });
+      out.push({
+        id: `e${id}`,
+        entrantId: s.entrantId,
+        entrantDisplayName: s.name,
+        ticketNumber: id + 1,
+      });
+      id++;
     }
   }
   return out;

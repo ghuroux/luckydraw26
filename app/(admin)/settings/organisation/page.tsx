@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
+import { PageHeader } from "@/components/shell";
 import { OrganisationSettingsForm } from "./SettingsForm";
 
 export default async function OrganisationSettingsPage() {
@@ -8,21 +10,16 @@ export default async function OrganisationSettingsPage() {
 
   const org = await db.organisation.findFirst();
   if (!org) {
-    // Should never happen — seed:superadmin guarantees one row.
     redirect("/dashboard");
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Organisation
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Branding and contact details. Colours apply to the admin UI and the
-          public portal.
-        </p>
-      </div>
+    <div className="mx-auto max-w-2xl space-y-8">
+      <PageHeader
+        eyebrow="Settings"
+        title="Organisation"
+        description="Branding and contact details. Colours apply to the admin UI and the public portal."
+      />
 
       <OrganisationSettingsForm
         defaultValues={{

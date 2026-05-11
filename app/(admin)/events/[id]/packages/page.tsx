@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { getEvent } from "@/lib/actions/event";
 import { listPackages } from "@/lib/actions/package";
 import { requireRole } from "@/lib/rbac";
@@ -27,11 +28,11 @@ export default async function PackagesPage({ params }: PageProps) {
   }));
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+    <div className="space-y-5">
+      <p className="max-w-3xl text-sm text-muted-foreground">
         Bulk deals — e.g. “5 entries for 200” — that entrants can pick during
-        tablet capture and on the public portal. Single entries are always
-        sold at the event's entry cost.
+        tablet capture and on the public portal. Single entries are always sold
+        at the event&apos;s entry cost.
       </p>
       <PackagesManager
         eventId={event.id}

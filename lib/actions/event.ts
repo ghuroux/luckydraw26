@@ -7,6 +7,7 @@ import type { EventStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { publish } from "@/lib/sse";
 import { DEFAULT_PAGE_SIZE, pageInfo } from "@/lib/pagination";
 
 const decimalString = z
@@ -20,6 +21,10 @@ const createEventSchema = z.object({
   drawTime: z.string().optional().nullable(), // HH:mm from <input type="time">
   entryCost: decimalString,
   prizePool: z.union([decimalString, z.literal("")]).optional(),
+  drawMode: z.enum(["PRIZE_DRAW", "WINNER_DRAW"]).default("PRIZE_DRAW"),
+  showSupporterIntro: z.boolean().default(false),
+  showSupporterNames: z.boolean().default(false),
+  showSupporterTicketCounts: z.boolean().default(false),
 });
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;
@@ -63,6 +68,10 @@ export async function createEvent(
       drawTime: data.drawTime || null,
       entryCost: data.entryCost,
       prizePool: data.prizePool ? data.prizePool : null,
+      drawMode: data.drawMode,
+      showSupporterIntro: data.showSupporterIntro,
+      showSupporterNames: data.showSupporterNames,
+      showSupporterTicketCounts: data.showSupporterTicketCounts,
     },
   });
 
@@ -70,7 +79,7 @@ export async function createEvent(
     action: "EVENT_CREATED",
     entityType: "Event",
     entityId: created.id,
-    metadata: { name: created.name },
+    metadata: { name: created.name, drawMode: created.drawMode },
   });
 
   revalidatePath("/events");
@@ -121,6 +130,21 @@ export async function updateEvent(
   }
 
   const data = parsed.data;
+
+  if (data.drawMode !== existing.drawMode) {
+    const lockedPrizeCount = await db.prize.count({
+      where: { eventId: id, lockedAt: { not: null } },
+    });
+    if (lockedPrizeCount > 0) {
+      return {
+        ok: false,
+        error:
+          "Draw mode is locked once a prize has been locked in. Clear all winners to change modes.",
+        fieldErrors: { drawMode: ["Locked — prizes already drawn."] },
+      };
+    }
+  }
+
   const updated = await db.event.update({
     where: { id },
     data: {
@@ -130,6 +154,10 @@ export async function updateEvent(
       drawTime: data.drawTime || null,
       entryCost: data.entryCost,
       prizePool: data.prizePool ? data.prizePool : null,
+      drawMode: data.drawMode,
+      showSupporterIntro: data.showSupporterIntro,
+      showSupporterNames: data.showSupporterNames,
+      showSupporterTicketCounts: data.showSupporterTicketCounts,
     },
   });
 
@@ -138,8 +166,16 @@ export async function updateEvent(
     entityType: "Event",
     entityId: id,
     metadata: {
-      before: { name: existing.name, entryCost: String(existing.entryCost) },
-      after: { name: updated.name, entryCost: String(updated.entryCost) },
+      before: {
+        name: existing.name,
+        entryCost: String(existing.entryCost),
+        drawMode: existing.drawMode,
+      },
+      after: {
+        name: updated.name,
+        entryCost: String(updated.entryCost),
+        drawMode: updated.drawMode,
+      },
     },
   });
 
@@ -187,6 +223,31 @@ export async function openEvent(id: string): Promise<ActionResult> {
 
   revalidatePath(`/events/${id}`);
   revalidatePath("/events");
+  return { ok: true };
+}
+
+// Operator-triggered: dismiss the supporter intro on the presentation and
+// advance to the normal teaser/idle state. Idempotent — safe to call twice.
+// Also implicitly fires the first time a draw is started so the intro doesn't
+// linger if the operator skips clicking the button.
+export async function advancePresentation(
+  id: string,
+): Promise<ActionResult> {
+  await requireRole("STAFF");
+  const event = await db.event.findUnique({
+    where: { id },
+    select: { id: true, presentationStartedAt: true },
+  });
+  if (!event) return { ok: false, error: "Event not found." };
+  if (event.presentationStartedAt) {
+    return { ok: true };
+  }
+  await db.event.update({
+    where: { id },
+    data: { presentationStartedAt: new Date() },
+  });
+  publish(id, "presentation_advance", {});
+  revalidatePath(`/events/${id}/draw`);
   return { ok: true };
 }
 

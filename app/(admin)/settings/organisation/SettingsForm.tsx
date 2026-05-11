@@ -5,16 +5,11 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Section } from "@/components/shell";
 import {
   updateOrganisation,
   type UpdateOrganisationInput,
@@ -69,92 +64,80 @@ export function OrganisationSettingsForm({ defaultValues }: Props) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Details</CardTitle>
-          <CardDescription>Public-facing organisation info.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" {...register("name")} />
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name.message}</p>
-            )}
-          </div>
+      <Section title="Details" description="Public-facing organisation info.">
+        <div className="space-y-2">
+          <Label htmlFor="name">Name</Label>
+          <Input id="name" {...register("name")} />
+          {errors.name && (
+            <p className="text-sm text-destructive">{errors.name.message}</p>
+          )}
+        </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="contactEmail">Contact email</Label>
-            <Input
-              id="contactEmail"
-              type="email"
-              placeholder="info@example.com"
-              {...register("contactEmail")}
-            />
-            {errors.contactEmail && (
-              <p className="text-sm text-destructive">
-                {errors.contactEmail.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="logoUrl">Logo URL</Label>
-            <Input
-              id="logoUrl"
-              placeholder="https://… (file upload comes later)"
-              {...register("logoUrl")}
-            />
-            {errors.logoUrl && (
-              <p className="text-sm text-destructive">
-                {errors.logoUrl.message}
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Theme</CardTitle>
-          <CardDescription>
-            Colours apply across the admin UI and the public portal. Pick
-            shades that contrast well with white text.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <ColorField
-            id="primaryColor"
-            label="Primary"
-            description="Main action / brand colour. Used for primary buttons and highlights."
-            control={control}
-            name="primaryColor"
-            error={errors.primaryColor?.message}
+        <div className="space-y-2">
+          <Label htmlFor="contactEmail">Contact email</Label>
+          <Input
+            id="contactEmail"
+            type="email"
+            placeholder="info@example.com"
+            {...register("contactEmail")}
           />
-          <ColorField
-            id="accentColor"
-            label="Accent"
-            description="Reserved for celebratory moments (winner reveals, completed states)."
-            control={control}
-            name="accentColor"
-            error={errors.accentColor?.message}
-          />
+          {errors.contactEmail && (
+            <p className="text-sm text-destructive">
+              {errors.contactEmail.message}
+            </p>
+          )}
+        </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="bgPattern">Background pattern URL</Label>
-            <Input
-              id="bgPattern"
-              placeholder="Optional repeating image (e.g. golf-pattern.png)"
-              {...register("bgPattern")}
-            />
-            {errors.bgPattern && (
-              <p className="text-sm text-destructive">
-                {errors.bgPattern.message}
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        <div className="space-y-2">
+          <Label htmlFor="logoUrl">Logo URL</Label>
+          <Input
+            id="logoUrl"
+            placeholder="https://… (file upload comes later)"
+            {...register("logoUrl")}
+          />
+          {errors.logoUrl && (
+            <p className="text-sm text-destructive">
+              {errors.logoUrl.message}
+            </p>
+          )}
+        </div>
+      </Section>
+
+      <Section
+        title="Theme"
+        description="Colours apply across the admin UI and the public portal. Pick shades that contrast well with white text."
+      >
+        <ColorField
+          id="primaryColor"
+          label="Primary"
+          description="Main action / brand colour. Used for primary buttons and highlights."
+          control={control}
+          name="primaryColor"
+          error={errors.primaryColor?.message}
+        />
+        <ColorField
+          id="accentColor"
+          label="Accent"
+          description="Org-themable accent. Used in secondary highlights — the winner-reveal moment uses a fixed gold regardless of accent."
+          control={control}
+          name="accentColor"
+          error={errors.accentColor?.message}
+        />
+
+        <div className="space-y-2">
+          <Label htmlFor="bgPattern">Background pattern URL</Label>
+          <Input
+            id="bgPattern"
+            placeholder="Optional repeating image (e.g. golf-pattern.png)"
+            {...register("bgPattern")}
+          />
+          {errors.bgPattern && (
+            <p className="text-sm text-destructive">
+              {errors.bgPattern.message}
+            </p>
+          )}
+        </div>
+      </Section>
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={isSubmitting || !isDirty}>
@@ -207,7 +190,7 @@ function ColorField({
               type="color"
               value={field.value}
               onChange={(e) => field.onChange(e.target.value)}
-              className="h-10 w-14 cursor-pointer rounded-md border bg-background"
+              className="h-10 w-14 cursor-pointer rounded-md border border-border bg-background"
               aria-label={`${label} colour swatch`}
             />
             <Input

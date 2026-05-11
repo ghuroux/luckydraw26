@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { EntrySource } from "@prisma/client";
+
 import { getEvent } from "@/lib/actions/event";
 import { listEntries } from "@/lib/actions/entry";
 import { listPackages } from "@/lib/actions/package";
-import { buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { EmptyState, Pagination, StatusBadge } from "@/components/shell";
 import {
   Table,
   TableBody,
@@ -14,6 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { entrySourceLabel, entrySourceTone } from "@/lib/entry-status";
+import { formatMoney } from "@/lib/money";
 import { parsePageParam } from "@/lib/pagination";
 import { AddEntryButton } from "./AddEntryButton";
 import { EntriesFilters } from "./EntriesFilters";
@@ -56,16 +58,28 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
   const activePackages = allPackages.filter((p) => p.isActive);
 
   const canAdd = event.status === "OPEN";
+  const hasFilters = paidFilter !== "ALL" || source !== "ALL";
+
+  const buildUrl = (p: number) => {
+    const qs = new URLSearchParams();
+    if (paidFilter !== "ALL") qs.set("paid", paidFilter);
+    if (source !== "ALL") qs.set("source", source);
+    if (p > 1) qs.set("page", String(p));
+    const s = qs.toString();
+    return s ? `/events/${event.id}/entries?${s}` : `/events/${event.id}/entries`;
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
-        <p className="text-sm text-muted-foreground">
-          {pagination.total}{" "}
-          {pagination.total === 1 ? "entry" : "entries"}
-          {paidFilter !== "ALL" ? ` · ${paidFilter.toLowerCase()}` : ""}
-          {source !== "ALL" ? ` · via ${source.toLowerCase()}` : ""}
-        </p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-muted-foreground">
+            <span className="font-mono tabular-nums">{pagination.total}</span>{" "}
+            {pagination.total === 1 ? "entry" : "entries"}
+            {paidFilter !== "ALL" ? ` · ${paidFilter.toLowerCase()}` : ""}
+            {source !== "ALL" ? ` · via ${source.toLowerCase()}` : ""}
+          </p>
+        </div>
         {canAdd && (
           <AddEntryButton
             eventId={event.id}
@@ -88,15 +102,23 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
 
       {entries.length === 0 ? (
         <EmptyState
-          hasFilters={paidFilter !== "ALL" || source !== "ALL"}
-          status={event.status}
+          title={hasFilters ? "No entries match those filters." : "No entries yet."}
+          description={
+            hasFilters
+              ? "Try clearing the filters."
+              : event.status === "OPEN"
+                ? "Click Add entry to record one."
+                : event.status === "DRAFT"
+                  ? "Open the event before adding entries."
+                  : `Event is ${event.status.toLowerCase()} — entries can't be added.`
+          }
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/8">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">Ticket</TableHead>
+              <TableRow className="bg-surface-sunken/60 hover:bg-surface-sunken/60">
+                <TableHead className="w-20">Ticket</TableHead>
                 <TableHead>Entrant</TableHead>
                 <TableHead>Source</TableHead>
                 <TableHead>Package</TableHead>
@@ -117,14 +139,14 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
                     >
                       {entry.entrant.firstName} {entry.entrant.lastName}
                     </Link>
-                    <p className="text-xs font-normal text-muted-foreground">
+                    <p className="font-mono text-xs font-normal text-muted-foreground">
                       {entry.entrant.email}
                     </p>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="font-normal">
-                      {entry.source.toLowerCase()}
-                    </Badge>
+                    <StatusBadge tone={entrySourceTone(entry.source)}>
+                      {entrySourceLabel(entry.source)}
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {entry.package
@@ -133,18 +155,19 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
                   </TableCell>
                   <TableCell>
                     {entry.paidAt ? (
-                      <Badge variant="default">Paid</Badge>
+                      <StatusBadge tone="success" dot>
+                        Paid
+                      </StatusBadge>
                     ) : (
-                      <Badge
-                        variant="outline"
-                        className="border-amber-500/40 text-amber-700 dark:text-amber-400"
-                      >
+                      <StatusBadge tone="warning" dot>
                         Unpaid
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {entry.donationAmount ? String(entry.donationAmount) : "—"}
+                  <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+                    {entry.donationAmount
+                      ? formatMoney(String(entry.donationAmount))
+                      : "—"}
                   </TableCell>
                 </TableRow>
               ))}
@@ -155,101 +178,13 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
 
       {pagination.totalPages > 1 && (
         <Pagination
-          eventId={event.id}
           page={pagination.page}
           totalPages={pagination.totalPages}
-          paidFilter={paidFilter}
-          source={source}
           hasPrev={pagination.hasPrev}
           hasNext={pagination.hasNext}
+          buildUrl={buildUrl}
         />
       )}
-    </div>
-  );
-}
-
-function EmptyState({
-  hasFilters,
-  status,
-}: {
-  hasFilters: boolean;
-  status: string;
-}) {
-  return (
-    <div className="rounded-lg border border-dashed p-12 text-center">
-      <p className="text-base font-medium">
-        {hasFilters ? "No entries match those filters." : "No entries yet."}
-      </p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {hasFilters
-          ? "Try clearing the filters."
-          : status === "OPEN"
-            ? "Click Add entry to record one."
-            : status === "DRAFT"
-              ? "Open the event before adding entries."
-              : `Event is ${status.toLowerCase()} — entries can't be added.`}
-      </p>
-    </div>
-  );
-}
-
-interface PaginationProps {
-  eventId: string;
-  page: number;
-  totalPages: number;
-  paidFilter: PaidFilter;
-  source: EntrySource | "ALL";
-  hasPrev: boolean;
-  hasNext: boolean;
-}
-
-function Pagination({
-  eventId,
-  page,
-  totalPages,
-  paidFilter,
-  source,
-  hasPrev,
-  hasNext,
-}: PaginationProps) {
-  const buildUrl = (p: number) => {
-    const params = new URLSearchParams();
-    if (paidFilter !== "ALL") params.set("paid", paidFilter);
-    if (source !== "ALL") params.set("source", source);
-    if (p > 1) params.set("page", String(p));
-    const qs = params.toString();
-    return qs
-      ? `/events/${eventId}/entries?${qs}`
-      : `/events/${eventId}/entries`;
-  };
-
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <p className="text-muted-foreground">
-        Page {page} of {totalPages}
-      </p>
-      <div className="flex gap-2">
-        <Link
-          href={buildUrl(page - 1)}
-          className={
-            buttonVariants({ variant: "outline", size: "sm" }) +
-            (hasPrev ? "" : " pointer-events-none opacity-50")
-          }
-          aria-disabled={!hasPrev}
-        >
-          Previous
-        </Link>
-        <Link
-          href={buildUrl(page + 1)}
-          className={
-            buttonVariants({ variant: "outline", size: "sm" }) +
-            (hasNext ? "" : " pointer-events-none opacity-50")
-          }
-          aria-disabled={!hasNext}
-        >
-          Next
-        </Link>
-      </div>
     </div>
   );
 }

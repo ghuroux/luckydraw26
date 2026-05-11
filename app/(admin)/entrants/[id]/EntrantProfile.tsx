@@ -5,15 +5,10 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Section } from "@/components/shell";
 import {
   updateEntrant,
   type EntrantInput,
@@ -56,17 +52,18 @@ export function EntrantProfile({ entrant }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Contact</CardTitle>
-        <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-          Edit
-        </Button>
-      </CardHeader>
-      <CardContent>
+    <>
+      <Section
+        title="Contact"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+            Edit
+          </Button>
+        }
+      >
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-          <Field label="Email" value={entrant.email} />
-          <Field label="Phone" value={entrant.phone || "—"} />
+          <Field label="Email" value={entrant.email} mono />
+          <Field label="Phone" value={entrant.phone || "—"} mono />
           <Field
             label="Date of birth"
             value={
@@ -91,24 +88,30 @@ export function EntrantProfile({ entrant }: Props) {
             }
           />
         </dl>
-      </CardContent>
+      </Section>
 
-      <EditDialog
-        open={open}
-        onOpenChange={setOpen}
-        entrant={entrant}
-      />
-    </Card>
+      <EditDialog open={open} onOpenChange={setOpen} entrant={entrant} />
+    </>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+      <dt className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </dt>
-      <dd className="mt-0.5 text-foreground">{value}</dd>
+      <dd className={`mt-1 text-foreground${mono ? " font-mono" : ""}`}>
+        {value}
+      </dd>
     </div>
   );
 }

@@ -16,6 +16,7 @@ export default async function PresentationPage({ params }: PageProps) {
     select: {
       id: true,
       name: true,
+      drawMode: true,
       prizes: {
         orderBy: { order: "asc" },
         select: { id: true, name: true },
@@ -29,10 +30,11 @@ export default async function PresentationPage({ params }: PageProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-zinc-950">
+    <div className="min-h-screen w-full overflow-hidden">
       <PresentationStage
         eventId={event.id}
         eventName={event.name}
+        drawMode={event.drawMode}
         prizeNameById={prizeNameById}
       />
     </div>

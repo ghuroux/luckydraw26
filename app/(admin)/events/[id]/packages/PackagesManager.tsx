@@ -5,14 +5,11 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Package } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -21,12 +18,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { EmptyState, StatusBadge } from "@/components/shell";
 import {
   createPackage,
   updatePackage,
   deletePackage,
   type PackageInput,
 } from "@/lib/actions/package";
+import { formatMoney } from "@/lib/money";
+import { cn } from "@/lib/utils";
 
 const decimalString = z
   .string()
@@ -119,17 +119,13 @@ export function PackagesManager({
       )}
 
       {initialPackages.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="font-medium">No packages yet.</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Optional. Single entries can still be sold at the event's entry
-              cost.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<Package />}
+          title="No packages yet."
+          description="Optional. Single entries can still be sold at the event's entry cost."
+        />
       ) : (
-        <div className="space-y-2">
+        <ul className="space-y-3">
           {initialPackages.map((pkg) => (
             <PackageRowCard
               key={pkg.id}
@@ -141,7 +137,7 @@ export function PackagesManager({
               onToggleActive={() => toggleActive(pkg)}
             />
           ))}
-        </div>
+        </ul>
       )}
 
       <PackageDialog
@@ -175,59 +171,63 @@ function PackageRowCard({
   const sold = pkg.entryCount > 0;
 
   return (
-    <Card className={pkg.isActive ? "" : "opacity-60"}>
-      <CardContent className="flex items-center gap-4 py-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate font-medium">{pkg.label}</p>
-            {!pkg.isActive && <Badge variant="outline">Inactive</Badge>}
-          </div>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            <span className="tabular-nums">{pkg.quantity}</span> entries for{" "}
-            <span className="tabular-nums">{pkg.cost}</span>
-            {sold && (
-              <>
-                {" · "}
-                <span className="tabular-nums">{pkg.entryCount}</span> sold
-              </>
-            )}
-          </p>
+    <li
+      className={cn(
+        "flex items-center gap-4 rounded-xl bg-card p-4 shadow-xs ring-1 ring-foreground/8",
+        !pkg.isActive && "opacity-70"
+      )}
+    >
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate font-medium">{pkg.label}</p>
+          {!pkg.isActive && <StatusBadge tone="muted">Inactive</StatusBadge>}
         </div>
-        {canEdit && (
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={isPending}
-              onClick={onToggleActive}
-            >
-              {pkg.isActive ? "Deactivate" : "Reactivate"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isPending}
-              onClick={onEdit}
-            >
-              Edit
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={isPending || sold}
-              onClick={onDelete}
-              title={
-                sold
-                  ? "Cannot delete a package with sold entries — deactivate instead"
-                  : undefined
-              }
-            >
-              Delete
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+        <p className="text-sm text-muted-foreground">
+          <span className="font-mono tabular-nums">{pkg.quantity}</span>{" "}
+          entries for{" "}
+          <span className="font-mono tabular-nums">{formatMoney(pkg.cost)}</span>
+          {sold && (
+            <>
+              {" · "}
+              <span className="font-mono tabular-nums">{pkg.entryCount}</span> sold
+            </>
+          )}
+        </p>
+      </div>
+      {canEdit && (
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={isPending}
+            onClick={onToggleActive}
+          >
+            {pkg.isActive ? "Deactivate" : "Reactivate"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={onEdit}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={isPending || sold}
+            onClick={onDelete}
+            title={
+              sold
+                ? "Cannot delete a package with sold entries — deactivate instead"
+                : undefined
+            }
+          >
+            Delete
+          </Button>
+        </div>
+      )}
+    </li>
   );
 }
 

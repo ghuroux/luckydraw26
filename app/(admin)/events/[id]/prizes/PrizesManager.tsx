@@ -6,14 +6,12 @@ import type { Prize } from "@prisma/client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { ArrowDown, ArrowUp, Trophy } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { EmptyState, StatusBadge } from "@/components/shell";
 import {
   createPrize,
   updatePrize,
@@ -29,6 +28,7 @@ import {
   movePrize,
   type PrizeInput,
 } from "@/lib/actions/prize";
+import { cn } from "@/lib/utils";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required.").max(200),
@@ -88,16 +88,13 @@ export function PrizesManager({ eventId, initialPrizes, canEdit }: Props) {
       )}
 
       {initialPrizes.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="font-medium">No prizes yet.</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add the prize for the 1st place draw to start.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<Trophy />}
+          title="No prizes yet."
+          description="Add the prize for the 1st place draw to start."
+        />
       ) : (
-        <div className="space-y-2">
+        <ul className="space-y-3">
           {initialPrizes.map((prize, index) => (
             <PrizeRow
               key={prize.id}
@@ -113,7 +110,7 @@ export function PrizesManager({ eventId, initialPrizes, canEdit }: Props) {
               onMoveDown={() => rowAction(() => movePrize(prize.id, "down"))}
             />
           ))}
-        </div>
+        </ul>
       )}
 
       <PrizeDialog
@@ -152,70 +149,78 @@ function PrizeRow({
   onMoveUp,
   onMoveDown,
 }: PrizeRowProps) {
+  const locked = !!prize.lockedAt;
   return (
-    <Card>
-      <CardContent className="flex items-center gap-4 py-4">
-        <div className="flex w-8 shrink-0 flex-col items-center text-xs font-mono text-muted-foreground">
+    <li
+      className={cn(
+        "flex items-center gap-4 rounded-xl bg-card p-4 shadow-xs ring-1 ring-foreground/8 transition-colors",
+        locked && "bg-celebration-soft/30 ring-celebration/25"
+      )}
+    >
+      <div className="flex w-10 shrink-0 items-center justify-center">
+        <span className="font-mono text-sm tabular-nums text-muted-foreground">
           #{index + 1}
-        </div>
-        <div className="min-w-0 flex-1">
+        </span>
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center gap-2">
           <p className="truncate font-medium">{prize.name}</p>
-          {prize.description && (
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {prize.description}
-            </p>
-          )}
-          {prize.lockedAt && (
-            <p className="mt-1 text-xs font-medium text-muted-foreground">
+          {locked && (
+            <StatusBadge tone="success" dot>
               Winner locked in
-            </p>
+            </StatusBadge>
           )}
         </div>
-        {canEdit && (
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              disabled={isFirst || isPending}
-              onClick={onMoveUp}
-              aria-label="Move up"
-            >
-              ↑
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              disabled={isLast || isPending}
-              onClick={onMoveDown}
-              aria-label="Move down"
-            >
-              ↓
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isPending || !!prize.lockedAt}
-              onClick={onEdit}
-            >
-              Edit
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={isPending || !!prize.winningEntryId}
-              onClick={onDelete}
-              title={
-                prize.winningEntryId
-                  ? "Cannot delete a prize with a recorded winner"
-                  : undefined
-              }
-            >
-              Delete
-            </Button>
-          </div>
+        {prize.description && (
+          <p className="truncate text-sm text-muted-foreground">
+            {prize.description}
+          </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+      {canEdit && (
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            disabled={isFirst || isPending}
+            onClick={onMoveUp}
+            aria-label="Move up"
+          >
+            <ArrowUp />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            disabled={isLast || isPending}
+            onClick={onMoveDown}
+            aria-label="Move down"
+          >
+            <ArrowDown />
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isPending || locked}
+            onClick={onEdit}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={isPending || !!prize.winningEntryId}
+            onClick={onDelete}
+            title={
+              prize.winningEntryId
+                ? "Cannot delete a prize with a recorded winner"
+                : undefined
+            }
+          >
+            Delete
+          </Button>
+        </div>
+      )}
+    </li>
   );
 }
 

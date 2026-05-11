@@ -1,13 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
+
 import { getEntrant } from "@/lib/actions/entrant";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader, Section, StatusBadge } from "@/components/shell";
 import { EntrantProfile } from "./EntrantProfile";
 
 interface PageProps {
@@ -19,7 +15,6 @@ export default async function EntrantDetailPage({ params }: PageProps) {
   const entrant = await getEntrant(id);
   if (!entrant) notFound();
 
-  // Group entries by event for the history view.
   const groups = new Map<
     string,
     {
@@ -44,17 +39,16 @@ export default async function EntrantDetailPage({ params }: PageProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-8">
+      <div className="space-y-5">
         <Link
           href="/entrants"
-          className="text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
-          ← Entrants
+          <ChevronLeft className="size-4" />
+          Entrants
         </Link>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          {entrant.firstName} {entrant.lastName}
-        </h1>
+        <PageHeader title={`${entrant.firstName} ${entrant.lastName}`} />
       </div>
 
       <EntrantProfile
@@ -72,24 +66,17 @@ export default async function EntrantDetailPage({ params }: PageProps) {
         }}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Entry history</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {entrant.entries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No entries yet.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {[...groups.values()].map(({ event, entries }) => (
-                <EventEntryGroup key={event.id} event={event} entries={entries} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <Section title="Entry history">
+        {entrant.entries.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No entries yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {[...groups.values()].map(({ event, entries }) => (
+              <EventEntryGroup key={event.id} event={event} entries={entries} />
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
@@ -108,7 +95,7 @@ interface EventEntryGroupProps {
 function EventEntryGroup({ event, entries }: EventEntryGroupProps) {
   const allPaid = entries.every((e) => e.paidAt !== null);
   return (
-    <div className="rounded-md border p-4">
+    <div className="rounded-xl bg-surface-sunken/60 p-4 ring-1 ring-foreground/8">
       <div className="flex items-baseline justify-between gap-4">
         <Link
           href={`/events/${event.id}`}
@@ -126,19 +113,22 @@ function EventEntryGroup({ event, entries }: EventEntryGroupProps) {
             : "—"}
         </span>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">
-          {entries.length} {entries.length === 1 ? "entry" : "entries"} ·{" "}
-          {entries
-            .map((e) => `#${e.ticketNumber}`)
-            .slice(0, 8)
-            .join(", ")}
-          {entries.length > 8 ? ` +${entries.length - 8} more` : ""}
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        <span>
+          <span className="font-mono tabular-nums">{entries.length}</span>{" "}
+          {entries.length === 1 ? "entry" : "entries"} ·{" "}
+          <span className="font-mono tabular-nums">
+            {entries
+              .map((e) => `#${e.ticketNumber}`)
+              .slice(0, 8)
+              .join(", ")}
+            {entries.length > 8 ? ` +${entries.length - 8} more` : ""}
+          </span>
         </span>
         {!allPaid && (
-          <Badge variant="outline" className="text-amber-600">
+          <StatusBadge tone="warning" dot>
             Unpaid
-          </Badge>
+          </StatusBadge>
         )}
       </div>
     </div>

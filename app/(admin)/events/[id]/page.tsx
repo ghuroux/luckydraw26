@@ -1,12 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
+
 import { getEvent } from "@/lib/actions/event";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Section, StatCard } from "@/components/shell";
+import { formatMoney } from "@/lib/money";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -18,7 +14,7 @@ export default async function EventDetailPage({ params }: PageProps) {
   if (!event) notFound();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Entries"
@@ -38,11 +34,8 @@ export default async function EventDetailPage({ params }: PageProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Schedule</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+        <Section title="Schedule">
+          <div className="space-y-3 text-sm">
             <DetailRow
               label="Date"
               value={
@@ -63,59 +56,28 @@ export default async function EventDetailPage({ params }: PageProps) {
                 value={new Date(event.drawnAt).toLocaleString()}
               />
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </Section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Money</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+        <Section title="Money">
+          <div className="space-y-3 text-sm">
             <DetailRow
               label="Entry cost"
-              value={String(event.entryCost)}
+              value={formatMoney(String(event.entryCost))}
               mono
             />
             <DetailRow
               label="Prize pool"
-              value={event.prizePool ? String(event.prizePool) : "—"}
+              value={
+                event.prizePool ? formatMoney(String(event.prizePool)) : "—"
+              }
               mono
             />
-          </CardContent>
-        </Card>
+          </div>
+        </Section>
       </div>
     </div>
   );
-}
-
-function StatCard({
-  label,
-  value,
-  href,
-}: {
-  label: string;
-  value: number;
-  href?: string;
-}) {
-  const inner = (
-    <CardContent className="pt-6">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-    </CardContent>
-  );
-
-  if (href) {
-    return (
-      <Card className="transition hover:border-foreground/20">
-        <Link href={href} className="block">
-          {inner}
-        </Link>
-      </Card>
-    );
-  }
-  return <Card>{inner}</Card>;
 }
 
 function DetailRow({
@@ -128,7 +90,7 @@ function DetailRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex justify-between gap-4">
+    <div className="flex justify-between gap-4 border-b border-border/60 pb-3 last:border-0 last:pb-0">
       <span className="text-muted-foreground">{label}</span>
       <span className={mono ? "font-mono tabular-nums" : ""}>{value}</span>
     </div>

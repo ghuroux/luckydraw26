@@ -3,11 +3,13 @@
 import { useState, useTransition } from "react";
 import { Banknote, CreditCard } from "lucide-react";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { createEntry } from "@/lib/actions/entry";
+import { formatMoney } from "@/lib/money";
 import type { EntrantSelection } from "./EntrantStep";
 import type { TicketSelection } from "./SelectionStep";
 
@@ -94,7 +96,7 @@ export function PaymentStep({
       <div className="flex-1 overflow-y-auto px-8 py-10">
         <div className="mx-auto w-full max-w-2xl space-y-8">
           <div>
-            <h2 className="text-3xl font-semibold tracking-tight">
+            <h2 className="text-display-2xs font-semibold tracking-tight md:text-display-xs">
               Take payment
             </h2>
             <p className="mt-2 text-base text-muted-foreground">
@@ -103,30 +105,36 @@ export function PaymentStep({
             </p>
           </div>
 
-          <div className="rounded-lg border bg-primary/5 px-6 py-5">
-            <p className="text-sm font-medium uppercase tracking-wide text-primary">
+          <div
+            className="relative overflow-hidden rounded-2xl bg-card px-6 py-6 ring-1 ring-foreground/10 shadow-sm"
+            style={{
+              backgroundImage:
+                "radial-gradient(80% 100% at 0% 0%, color-mix(in oklch, var(--primary) 6%, transparent), transparent 70%)",
+            }}
+          >
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
               Amount due
             </p>
-            <p className="mt-1 text-4xl font-semibold tabular-nums">
-              {total.toFixed(2)}
+            <p className="mt-2 font-mono text-display-md font-semibold tabular-nums">
+              {formatMoney(total)}
             </p>
           </div>
 
           <div className="space-y-3">
-            <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Payment method
             </p>
             <div className="grid grid-cols-2 gap-3">
               <MethodTile
                 active={method === "CASH"}
                 onClick={() => setMethod("CASH")}
-                icon={<Banknote className="size-8" aria-hidden />}
+                icon={<Banknote aria-hidden />}
                 label="Cash"
               />
               <MethodTile
                 active={method === "CARD"}
                 onClick={() => setMethod("CARD")}
-                icon={<CreditCard className="size-8" aria-hidden />}
+                icon={<CreditCard aria-hidden />}
                 label="Card"
               />
             </div>
@@ -194,10 +202,11 @@ function MethodTile({
       aria-pressed={active}
       className={cn(
         TAP,
-        "flex flex-col items-center justify-center gap-2 rounded-lg border-2 px-6 py-8 text-center transition",
+        "group flex flex-col items-center justify-center gap-3 rounded-xl border-2 px-6 py-9 text-center transition-all",
+        "[&_svg]:size-12",
         active
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-primary/5",
+          ? "border-primary bg-primary/10 text-primary shadow-sm"
+          : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-primary/5 hover:shadow-xs",
       )}
     >
       {icon}

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { buttonVariants } from "@/components/ui/button";
 import { DrawManager } from "./DrawManager";
+import { StartShowButton } from "./StartShowButton";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -20,11 +21,15 @@ export default async function DrawPage({ params }: PageProps) {
       id: true,
       name: true,
       status: true,
+      drawMode: true,
+      showSupporterIntro: true,
+      presentationStartedAt: true,
       prizes: {
         orderBy: { order: "asc" },
         select: {
           id: true,
           name: true,
+          description: true,
           lockedAt: true,
           winningEntry: {
             select: {
@@ -41,6 +46,27 @@ export default async function DrawPage({ params }: PageProps) {
     },
   });
   if (!event) notFound();
+
+  const parkedEntries =
+    event.drawMode === "WINNER_DRAW"
+      ? await db.entry.findMany({
+          where: { eventId: event.id, wonAt: { not: null } },
+          select: {
+            id: true,
+            ticketNumber: true,
+            wonAt: true,
+            entrant: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { wonAt: "asc" },
+        })
+      : [];
+
+  const parkedWinners = parkedEntries.map((e) => ({
+    entryId: e.id,
+    ticketNumber: e.ticketNumber,
+    entrantDisplayName: `${e.entrant.firstName} ${e.entrant.lastName}`,
+    wonAt: e.wonAt!,
+  }));
 
   const drawable = event.status === "OPEN" || event.status === "CLOSED";
   const hasPrizes = event.prizes.length > 0;
@@ -98,7 +124,18 @@ export default async function DrawPage({ params }: PageProps) {
               <ExternalLink data-icon="inline-end" />
             </Link>
           </div>
-          <DrawManager prizes={event.prizes} canDraw={canDraw} />
+
+          {event.showSupporterIntro && !event.presentationStartedAt && (
+            <StartShowButton eventId={event.id} />
+          )}
+
+          <DrawManager
+            eventId={event.id}
+            drawMode={event.drawMode}
+            prizes={event.prizes}
+            parkedWinners={parkedWinners}
+            canDraw={canDraw}
+          />
         </>
       )}
     </div>

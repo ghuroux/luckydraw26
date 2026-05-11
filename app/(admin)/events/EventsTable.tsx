@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { EventStatus } from "@prisma/client";
-import { Badge } from "@/components/ui/badge";
+
+import { StatusBadge } from "@/components/shell";
 import {
   Table,
   TableBody,
@@ -12,13 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const STATUS_VARIANT: Record<EventStatus, "default" | "secondary" | "outline"> = {
-  DRAFT: "outline",
-  OPEN: "default",
-  CLOSED: "secondary",
-  DRAWN: "secondary",
-};
+import { eventStatusLabel, eventStatusTone } from "@/lib/event-status";
 
 export interface EventRow {
   id: string;
@@ -31,10 +26,10 @@ export interface EventRow {
 export function EventsTable({ events }: { events: EventRow[] }) {
   const router = useRouter();
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/8">
       <Table>
         <TableHeader>
-          <TableRow>
+          <TableRow className="bg-surface-sunken/60 hover:bg-surface-sunken/60">
             <TableHead>Name</TableHead>
             <TableHead>Date</TableHead>
             <TableHead>Status</TableHead>
@@ -48,7 +43,7 @@ export function EventsTable({ events }: { events: EventRow[] }) {
             return (
               <TableRow
                 key={event.id}
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-pointer transition-colors hover:bg-muted/50"
                 onClick={() => router.push(href)}
               >
                 <TableCell className="font-medium">
@@ -70,14 +65,17 @@ export function EventsTable({ events }: { events: EventRow[] }) {
                     : "—"}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={STATUS_VARIANT[event.status]}>
-                    {event.status}
-                  </Badge>
+                  <StatusBadge
+                    tone={eventStatusTone(event.status)}
+                    dot={event.status === "OPEN"}
+                  >
+                    {eventStatusLabel(event.status)}
+                  </StatusBadge>
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell className="text-right font-mono tabular-nums">
                   {event._count.entries}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell className="text-right font-mono tabular-nums">
                   {event._count.prizes}
                 </TableCell>
               </TableRow>

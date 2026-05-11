@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/rbac";
+import { enforceAccountAccess, requireRole } from "@/lib/rbac";
 import { TabletFlow } from "./TabletFlow";
 
 interface PageProps {
@@ -8,7 +8,8 @@ interface PageProps {
 }
 
 export default async function TabletCapturePage({ params }: PageProps) {
-  await requireRole("STAFF");
+  const session = await requireRole("STAFF");
+  await enforceAccountAccess(session.user.id);
   const { id } = await params;
 
   const [event, packages] = await Promise.all([

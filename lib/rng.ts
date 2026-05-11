@@ -4,6 +4,7 @@ export interface EntryForSelection {
   id: string;
   entrantId: string;
   entrantDisplayName: string;
+  ticketNumber: number;
 }
 
 // One-win-per-entrant filter. If the filter would empty the pool (e.g. more

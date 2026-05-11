@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
@@ -83,7 +84,6 @@ export function TabletFlow({
     setSelection(null);
     setDonation("");
     setConfirmation(null);
-    // Pull a fresh sold-count for the next sale's landing screen.
     router.refresh();
   };
 
@@ -93,50 +93,52 @@ export function TabletFlow({
         <StepHeader current={step} onCancel={goLanding} />
       )}
       <main className="flex flex-1 flex-col">
-        {step === "landing" && (
-          <LandingStep event={event} onStart={() => setStep("entrant")} />
-        )}
-        {step === "entrant" && (
-          <EntrantStep
-            initial={entrant}
-            onBack={goLanding}
-            onNext={(selection) => {
-              setEntrant(selection);
-              setStep("selection");
-            }}
-          />
-        )}
-        {step === "selection" && (
-          <SelectionStep
-            entryCost={event.entryCost}
-            packages={packages}
-            initialSelection={selection}
-            initialDonation={donation}
-            onBack={() => setStep("entrant")}
-            onNext={(nextSelection, nextDonation) => {
-              setSelection(nextSelection);
-              setDonation(nextDonation);
-              setStep("payment");
-            }}
-          />
-        )}
-        {step === "payment" && entrant && selection && (
-          <PaymentStep
-            eventId={event.id}
-            entrant={entrant}
-            selection={selection}
-            donation={donation}
-            total={total}
-            onBack={() => setStep("selection")}
-            onConfirmed={(payload) => {
-              setConfirmation(payload);
-              setStep("confirmation");
-            }}
-          />
-        )}
-        {step === "confirmation" && confirmation && (
-          <ConfirmationStep payload={confirmation} onDone={goLanding} />
-        )}
+        <div key={step} className="flex flex-1 flex-col animate-enter-step">
+          {step === "landing" && (
+            <LandingStep event={event} onStart={() => setStep("entrant")} />
+          )}
+          {step === "entrant" && (
+            <EntrantStep
+              initial={entrant}
+              onBack={goLanding}
+              onNext={(selection) => {
+                setEntrant(selection);
+                setStep("selection");
+              }}
+            />
+          )}
+          {step === "selection" && (
+            <SelectionStep
+              entryCost={event.entryCost}
+              packages={packages}
+              initialSelection={selection}
+              initialDonation={donation}
+              onBack={() => setStep("entrant")}
+              onNext={(nextSelection, nextDonation) => {
+                setSelection(nextSelection);
+                setDonation(nextDonation);
+                setStep("payment");
+              }}
+            />
+          )}
+          {step === "payment" && entrant && selection && (
+            <PaymentStep
+              eventId={event.id}
+              entrant={entrant}
+              selection={selection}
+              donation={donation}
+              total={total}
+              onBack={() => setStep("selection")}
+              onConfirmed={(payload) => {
+                setConfirmation(payload);
+                setStep("confirmation");
+              }}
+            />
+          )}
+          {step === "confirmation" && confirmation && (
+            <ConfirmationStep payload={confirmation} onDone={goLanding} />
+          )}
+        </div>
       </main>
     </div>
   );
@@ -157,9 +159,9 @@ function StepHeader({
           <div key={s.key} className="flex items-center gap-3">
             <div
               className={cn(
-                "flex size-9 items-center justify-center rounded-full text-sm font-semibold tabular-nums",
-                i < idx && "bg-primary/20 text-primary",
-                i === idx && "bg-primary text-primary-foreground",
+                "flex size-9 items-center justify-center rounded-full font-mono text-sm font-semibold tabular-nums transition-colors",
+                i < idx && "bg-primary/15 text-primary",
+                i === idx && "bg-primary text-primary-foreground shadow-xs",
                 i > idx && "bg-muted text-muted-foreground",
               )}
             >
@@ -176,7 +178,7 @@ function StepHeader({
             {i < STEPS.length - 1 && (
               <div
                 className={cn(
-                  "h-px w-8",
+                  "h-px w-8 transition-colors",
                   i < idx ? "bg-primary/40" : "bg-border",
                 )}
               />
@@ -196,10 +198,6 @@ function StepHeader({
   );
 }
 
-// Logs the operator out and bounces them to /login after `minutes` of
-// inactivity (no pointer/touch/keyboard input). Spec: tablets left
-// unattended must not keep capturing under the previous operator's
-// session. Pass 0 to disable (useful for tests).
 function useIdleLogout(
   minutes: number,
   router: ReturnType<typeof useRouter>,
@@ -244,32 +242,52 @@ function LandingStep({
     event.soldCount === 1 ? "entry" : "entries"
   } sold`;
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-8 py-16 text-center">
-      <p className="text-sm uppercase tracking-widest text-muted-foreground">
-        Tablet capture
-      </p>
-      <h1 className="mt-4 text-5xl font-semibold tracking-tight">
-        {event.name}
-      </h1>
-      <p className="mt-3 text-lg text-muted-foreground">{soldLabel}</p>
-      <div className="mt-12 w-full max-w-md">
-        {open ? (
-          <Button
-            size="lg"
-            onClick={onStart}
-            className="h-20 w-full text-2xl font-semibold"
-          >
-            Sell ticket
-          </Button>
-        ) : (
-          <div className="rounded-lg border border-dashed bg-muted/40 px-6 py-8 text-base text-muted-foreground">
-            Event is{" "}
-            <span className="font-semibold text-foreground">{event.status}</span>{" "}
-            — entries can&apos;t be captured here.
-          </div>
-        )}
+    <div className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-8 py-16 text-center">
+      {/* Subtle gradient backdrop — primary tint above, celebration below */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(60% 50% at 50% 0%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 70%), radial-gradient(50% 40% at 50% 100%, color-mix(in oklch, var(--celebration) 7%, transparent), transparent 70%)",
+        }}
+      />
+
+      <div className="relative">
+        <p className="text-sm font-medium uppercase tracking-[0.25em] text-muted-foreground">
+          Tablet capture
+        </p>
+        <h1 className="mt-5 text-display-md font-semibold tracking-tight md:text-display-lg">
+          {event.name}
+        </h1>
+        <p className="mt-4 text-lg text-muted-foreground">
+          <span className="font-mono tabular-nums text-foreground">
+            {event.soldCount.toLocaleString()}
+          </span>{" "}
+          {event.soldCount === 1 ? "entry" : "entries"} sold
+        </p>
+        <span className="sr-only">{soldLabel}</span>
+
+        <div className="mt-12 w-full max-w-md">
+          {open ? (
+            <Button
+              size="lg"
+              onClick={onStart}
+              className="h-20 w-full text-2xl font-semibold shadow-md hover:shadow-lg"
+            >
+              Sell ticket
+            </Button>
+          ) : (
+            <div className="rounded-xl border border-dashed bg-muted/40 px-6 py-8 text-base text-muted-foreground">
+              Event is{" "}
+              <span className="font-semibold text-foreground">
+                {event.status}
+              </span>{" "}
+              — entries can&apos;t be captured here.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
 import {
   Table,
   TableBody,
@@ -25,10 +26,10 @@ export interface EntrantRow {
 export function EntrantsTable({ entrants }: { entrants: EntrantRow[] }) {
   const router = useRouter();
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/8">
       <Table>
         <TableHeader>
-          <TableRow>
+          <TableRow className="bg-surface-sunken/60 hover:bg-surface-sunken/60">
             <TableHead>Name</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Phone</TableHead>
@@ -43,7 +44,7 @@ export function EntrantsTable({ entrants }: { entrants: EntrantRow[] }) {
             return (
               <TableRow
                 key={entrant.id}
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-pointer transition-colors hover:bg-muted/50"
                 onClick={() => router.push(href)}
               >
                 <TableCell className="font-medium">
@@ -58,10 +59,10 @@ export function EntrantsTable({ entrants }: { entrants: EntrantRow[] }) {
                 <TableCell className="text-muted-foreground">
                   {entrant.email}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className="font-mono text-muted-foreground tabular-nums">
                   {entrant.phone ?? "—"}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell className="text-right font-mono tabular-nums">
                   {entrant._count.entries}
                 </TableCell>
                 <TableCell className="text-muted-foreground">

@@ -1,21 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { EventStatus } from "@prisma/client";
+import { ChevronLeft } from "lucide-react";
+
 import { getEvent } from "@/lib/actions/event";
 import { buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader, StatusBadge } from "@/components/shell";
+import { eventStatusLabel, eventStatusTone } from "@/lib/event-status";
 import { EventActions } from "./EventActions";
 import { EventTabs } from "./EventTabs";
-
-const STATUS_VARIANT: Record<
-  EventStatus,
-  "default" | "secondary" | "outline"
-> = {
-  DRAFT: "outline",
-  OPEN: "default",
-  CLOSED: "secondary",
-  DRAWN: "secondary",
-};
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -28,50 +20,51 @@ export default async function EventLayout({ children, params }: LayoutProps) {
   if (!event) notFound();
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-8">
+      <div className="space-y-5">
         <Link
           href="/events"
-          className="text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
-          ← Events
+          <ChevronLeft className="size-4" />
+          Events
         </Link>
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight">
-                {event.name}
-              </h1>
-              <Badge variant={STATUS_VARIANT[event.status]}>
-                {event.status}
-              </Badge>
-            </div>
-            {event.description && (
-              <p className="mt-2 max-w-2xl text-muted-foreground">
-                {event.description}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/events/${event.id}/edit`}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Edit basics
-            </Link>
-            <EventActions
-              eventId={event.id}
-              status={event.status}
-              prizeCount={event._count.prizes}
-              drawnAt={event.drawnAt}
-            />
-          </div>
-        </div>
+
+        <PageHeader
+          title={
+            <span className="inline-flex items-center gap-3">
+              {event.name}
+              <StatusBadge
+                tone={eventStatusTone(event.status)}
+                dot={event.status === "OPEN"}
+              >
+                {eventStatusLabel(event.status)}
+              </StatusBadge>
+            </span>
+          }
+          description={event.description ?? undefined}
+          actions={
+            <>
+              <Link
+                href={`/events/${event.id}/edit`}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                Edit basics
+              </Link>
+              <EventActions
+                eventId={event.id}
+                status={event.status}
+                prizeCount={event._count.prizes}
+                drawnAt={event.drawnAt}
+              />
+            </>
+          }
+        />
       </div>
 
       <EventTabs eventId={event.id} />
 
-      <div>{children}</div>
+      <div className="animate-enter-page">{children}</div>
     </div>
   );
 }

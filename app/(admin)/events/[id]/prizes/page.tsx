@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { getEvent } from "@/lib/actions/event";
 import { listPrizes } from "@/lib/actions/prize";
 import { requireRole } from "@/lib/rbac";
@@ -18,11 +19,16 @@ export default async function PrizesPage({ params }: PageProps) {
   const canEdit = event.status !== "DRAWN";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
-        {prizes.length === 0
-          ? "Add at least one prize before opening the event."
-          : `${prizes.length} ${prizes.length === 1 ? "prize" : "prizes"}, drawn in the order shown.`}
+        {prizes.length === 0 ? (
+          "Add at least one prize before opening the event."
+        ) : (
+          <>
+            <span className="font-mono tabular-nums">{prizes.length}</span>{" "}
+            {prizes.length === 1 ? "prize" : "prizes"}, drawn in the order shown.
+          </>
+        )}
       </p>
       <PrizesManager
         eventId={event.id}

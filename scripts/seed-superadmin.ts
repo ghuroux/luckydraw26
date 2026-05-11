@@ -17,11 +17,25 @@ async function ensureSuperadmin(email: string, password: string) {
     return;
   }
 
-  await auth.api.signUpEmail({
-    body: { email, password, name: "Super Admin" },
+  // Bootstrap path goes through better-auth's lower-level context rather
+  // than auth.api.signUpEmail, because emailAndPassword.disableSignUp now
+  // blocks the public + internal sign-up endpoint.
+  const ctx = await auth.$context;
+  const hash = await ctx.password.hash(password);
+  const created = await ctx.internalAdapter.createUser({
+    email,
+    name: "Super Admin",
+    emailVerified: false,
+  });
+  if (!created) throw new Error("Failed to create bootstrap SUPERADMIN.");
+  await ctx.internalAdapter.linkAccount({
+    userId: created.id,
+    providerId: "credential",
+    accountId: created.id,
+    password: hash,
   });
   await db.user.update({
-    where: { email },
+    where: { id: created.id },
     data: { role: "SUPERADMIN" },
   });
   console.log(`✓ Created SUPERADMIN: ${email}`);

@@ -13,18 +13,20 @@ datasource db {
 // ─────────── Auth (managed by better-auth) ───────────
 
 model User {
-  id            String     @id
-  email         String     @unique
-  emailVerified Boolean    @default(false)
-  name          String
-  image         String?
-  role          Role       @default(STAFF)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id                 String     @id
+  email              String     @unique
+  emailVerified      Boolean    @default(false)
+  name               String
+  image              String?
+  role               Role       @default(STAFF)
+  mustChangePassword Boolean    @default(false)
+  deactivatedAt      DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
-  sessions      Session[]
-  accounts      Account[]
-  auditLogs     AuditLog[]
+  sessions           Session[]
+  accounts           Account[]
+  auditLogs          AuditLog[]
 }
 
 model Session {
@@ -119,6 +121,7 @@ model Event {
   entryCost         Decimal      @default(0) @db.Decimal(10, 2)
   prizePool         Decimal?     @db.Decimal(10, 2)
   status            EventStatus  @default(DRAFT)
+  drawMode          DrawMode     @default(PRIZE_DRAW)
   drawnAt           DateTime?
 
   // Public portal (see V2_SPEC.md §8.8)
@@ -127,6 +130,18 @@ model Event {
   publicDescription Json?
   publicHeroImage   String?
   themeOverride     Json?
+
+  // Presentation pre-show. When showSupporterIntro is on, the presentation
+  // route opens with an intro screen (aggregate stats + thank-you) until the
+  // operator clicks "Audience is ready", which sets presentationStartedAt and
+  // advances the audience view. showSupporterNames scrolls the names of all
+  // supporters (alphabetical, no ranking). showSupporterTicketCounts adds
+  // each supporter's ticket count alongside their name — gated on
+  // showSupporterNames. All off by default; orgs opt in per event.
+  showSupporterIntro        Boolean   @default(false)
+  showSupporterNames        Boolean   @default(false)
+  showSupporterTicketCounts Boolean   @default(false)
+  presentationStartedAt     DateTime?
 
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
@@ -145,6 +160,11 @@ enum EventStatus {
   OPEN
   CLOSED
   DRAWN
+}
+
+enum DrawMode {
+  PRIZE_DRAW
+  WINNER_DRAW
 }
 
 model EntryPackage {
@@ -171,6 +191,7 @@ model Entry {
   paymentRef      String?
   paymentMethod   PaymentMethod?
   paidAt          DateTime?
+  wonAt           DateTime?
   source          EntrySource    @default(ADMIN)
   createdAt       DateTime       @default(now())
 
@@ -217,14 +238,19 @@ model Prize {
 // ─────────── Logs ───────────
 
 model EmailLog {
-  id        String    @id @default(cuid())
-  to        String
-  subject   String
-  template  String
-  context   Json
-  sentAt    DateTime?
-  error     String?
-  createdAt DateTime  @default(now())
+  id             String    @id @default(cuid())
+  to             String
+  subject        String
+  template       String
+  context        Json
+  sentAt         DateTime?
+  error          String?
+  attempts       Int       @default(0)
+  lastAttemptAt  DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([template, sentAt])
+  @@index([createdAt])
 }
 
 model AuditLog {
@@ -262,6 +288,8 @@ enum AuditAction {
   WINNER_LOCKED
   WINNER_CLEARED
   WINNER_NOTIFIED
+  WINNER_PARKED
+  DRAW_ABORTED
   ENTRY_CREATED
   ENTRY_DELETED
   ENTRY_RECONCILED
@@ -269,5 +297,7 @@ enum AuditAction {
   USER_INVITED
   USER_ROLE_CHANGED
   USER_DEACTIVATED
+  USER_REACTIVATED
+  USER_PASSWORD_CHANGED
   ORG_UPDATED
 }

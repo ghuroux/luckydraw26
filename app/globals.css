@@ -6,69 +6,107 @@
 /*
  * Brand defaults — emerald primary + amber accent. These get overridden at
  * runtime per Organisation (and optionally per Event); see V2_SPEC.md §8.12.
+ *
+ * Neutral palette is warmed slightly toward Stripe/Notion territory: an
+ * off-white page background with pure-white cards on top creates layered
+ * depth without relying on heavy borders.
  */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /* Page sits a hair warmer than pure white so cards (pure white) read as
+     elevated. */
+  --background: oklch(0.992 0.002 80);
+  --foreground: oklch(0.18 0.01 270);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.18 0.01 270);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.18 0.01 270);
+
+  /* Surface tiers — for elevated panels that should sit above cards
+     (dialogs, popovers, command palettes). */
+  --surface: oklch(1 0 0);
+  --surface-elevated: oklch(1 0 0);
+  --surface-sunken: oklch(0.975 0.003 80);
 
   /* Primary: emerald-600 */
   --primary: oklch(0.596 0.145 163);
   --primary-foreground: oklch(0.985 0 0);
 
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.97 0.003 80);
+  --secondary-foreground: oklch(0.205 0.01 270);
 
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted: oklch(0.97 0.003 80);
+  --muted-foreground: oklch(0.48 0.012 270);
 
-  /* Accent: amber-500 — reserved for celebratory / winner moments */
+  /* Accent: amber-500 — org-themable, used for branded UI accents */
   --accent: oklch(0.769 0.165 70);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent-foreground: oklch(0.205 0.01 270);
+
+  /* Celebration: warm gold reserved for draw climax / winner moments.
+     Fixed, NOT overridden per organisation — keeps the magic moment
+     consistently celebratory regardless of org branding. */
+  --celebration: oklch(0.79 0.165 75);
+  --celebration-soft: oklch(0.93 0.06 80);
+  --celebration-foreground: oklch(0.22 0.04 70);
 
   --destructive: oklch(0.577 0.245 27.325);
 
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: oklch(0.92 0.004 80);
+  --input: oklch(0.92 0.004 80);
   --ring: oklch(0.596 0.145 163);
 
-  --radius: 0.5rem;
+  /* Slightly softer default — 10px feels more refined than 8px */
+  --radius: 0.625rem;
 
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
+  /* Elevation scale — soft, low-spread, slate-tinted shadows.
+     Cards stay flat by default; elevation is opt-in via shadow utilities. */
+  --shadow-2xs: 0 1px 1px 0 rgb(16 24 40 / 0.04);
+  --shadow-xs: 0 1px 2px 0 rgb(16 24 40 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(16 24 40 / 0.06), 0 1px 2px -1px rgb(16 24 40 / 0.04);
+  --shadow-md: 0 4px 8px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.04);
+  --shadow-lg: 0 12px 24px -6px rgb(16 24 40 / 0.10), 0 4px 8px -4px rgb(16 24 40 / 0.05);
+  --shadow-xl: 0 24px 48px -12px rgb(16 24 40 / 0.14);
+  --shadow-2xl: 0 40px 80px -20px rgb(16 24 40 / 0.22);
+
+  --sidebar: oklch(0.985 0.002 80);
+  --sidebar-foreground: oklch(0.18 0.01 270);
   --sidebar-primary: oklch(0.596 0.145 163);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-accent: oklch(0.97 0.003 80);
+  --sidebar-accent-foreground: oklch(0.205 0.01 270);
+  --sidebar-border: oklch(0.92 0.004 80);
   --sidebar-ring: oklch(0.596 0.145 163);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.145 0.005 270);
   --foreground: oklch(0.985 0 0);
 
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.205 0.006 270);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: oklch(0.215 0.006 270);
   --popover-foreground: oklch(0.985 0 0);
+
+  --surface: oklch(0.205 0.006 270);
+  --surface-elevated: oklch(0.235 0.007 270);
+  --surface-sunken: oklch(0.125 0.004 270);
 
   /* Slightly brighter primary for dark backgrounds */
   --primary: oklch(0.696 0.16 163);
   --primary-foreground: oklch(0.145 0 0);
 
-  --secondary: oklch(0.269 0 0);
+  --secondary: oklch(0.269 0.005 270);
   --secondary-foreground: oklch(0.985 0 0);
 
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
+  --muted: oklch(0.269 0.005 270);
+  --muted-foreground: oklch(0.708 0.005 270);
 
   --accent: oklch(0.819 0.18 70);
   --accent-foreground: oklch(0.145 0 0);
+
+  --celebration: oklch(0.83 0.18 75);
+  --celebration-soft: oklch(0.32 0.08 70);
+  --celebration-foreground: oklch(0.145 0.01 70);
 
   --destructive: oklch(0.704 0.191 22.216);
 
@@ -76,11 +114,19 @@
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.696 0.16 163);
 
-  --sidebar: oklch(0.205 0 0);
+  --shadow-2xs: 0 1px 1px 0 rgb(0 0 0 / 0.30);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.40), 0 1px 2px -1px rgb(0 0 0 / 0.30);
+  --shadow-md: 0 4px 8px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.30);
+  --shadow-lg: 0 12px 24px -6px rgb(0 0 0 / 0.50), 0 4px 8px -4px rgb(0 0 0 / 0.30);
+  --shadow-xl: 0 24px 48px -12px rgb(0 0 0 / 0.55);
+  --shadow-2xl: 0 40px 80px -20px rgb(0 0 0 / 0.65);
+
+  --sidebar: oklch(0.205 0.006 270);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.696 0.16 163);
   --sidebar-primary-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: oklch(0.269 0.005 270);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.696 0.16 163);
@@ -95,6 +141,10 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
 
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-sunken: var(--surface-sunken);
+
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
 
@@ -106,6 +156,10 @@
 
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+
+  --color-celebration: var(--celebration);
+  --color-celebration-soft: var(--celebration-soft);
+  --color-celebration-foreground: var(--celebration-foreground);
 
   --color-destructive: var(--destructive);
 
@@ -126,8 +180,49 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
 
   --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Display type tier — tight tracking, snug leading, for hero moments.
+     Use display sizes for: page heroes on landing surfaces, dashboard
+     headlines, winner names, large numerical readouts. */
+  --text-display-2xs: 1.5rem;
+  --text-display-2xs--line-height: 1.2;
+  --text-display-2xs--letter-spacing: -0.015em;
+
+  --text-display-xs: 1.875rem;
+  --text-display-xs--line-height: 1.15;
+  --text-display-xs--letter-spacing: -0.018em;
+
+  --text-display-sm: 2.25rem;
+  --text-display-sm--line-height: 1.1;
+  --text-display-sm--letter-spacing: -0.02em;
+
+  --text-display-md: 3rem;
+  --text-display-md--line-height: 1.05;
+  --text-display-md--letter-spacing: -0.025em;
+
+  --text-display-lg: 3.75rem;
+  --text-display-lg--line-height: 1;
+  --text-display-lg--letter-spacing: -0.03em;
+
+  --text-display-xl: 4.5rem;
+  --text-display-xl--line-height: 1;
+  --text-display-xl--letter-spacing: -0.035em;
+
+  --text-display-2xl: 6rem;
+  --text-display-2xl--line-height: 0.95;
+  --text-display-2xl--letter-spacing: -0.04em;
 }
 
 @layer base {
@@ -136,5 +231,53 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* Motion presets — three named transitions used across the app.
+   Keep this set tight; new motion should compose these or go through code review. */
+@layer utilities {
+  /* enter-page is opacity-only on purpose. A transform on the wrapper
+     creates a containing block for fixed-positioned descendants, which
+     traps full-bleed overlays (e.g. /events/[id]/presentation) inside
+     the wrapper instead of the viewport. */
+  @keyframes enter-page {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes enter-dialog {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  @keyframes enter-step {
+    from { opacity: 0; transform: translateX(12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .animate-enter-page   { animation: enter-page 220ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-enter-dialog { animation: enter-dialog 160ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-enter-step   { animation: enter-step 260ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+  /* Stinger — a brief warm flash overlaid on the showcase the moment the
+     winner card lands. Pairs with the confetti burst; gives the moment a
+     percussive punch without being garish. */
+  @keyframes stinger {
+    from { opacity: 0.18; }
+    to   { opacity: 0; }
+  }
+  .animate-stinger { animation: stinger 320ms ease-out both; }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-stinger { animation: none; opacity: 0; }
+  }
+
+  /* Supporter scroller — infinite vertical loop. The list is duplicated in
+     the DOM so translateY(-50%) lands exactly where the loop started. Used
+     by the SupporterIntroScreen pre-show. */
+  @keyframes supporter-scroll {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-50%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [style*="supporter-scroll"] { animation: none !important; }
   }
 }

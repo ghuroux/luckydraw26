@@ -1,10 +1,12 @@
 import Link from "next/link";
 import type { EventStatus } from "@prisma/client";
+
 import { listEvents } from "@/lib/actions/event";
 import { buttonVariants } from "@/components/ui/button";
+import { EmptyState, PageHeader, Pagination } from "@/components/shell";
+import { parsePageParam } from "@/lib/pagination";
 import { EventsFilters } from "./EventsFilters";
 import { EventsTable } from "./EventsTable";
-import { parsePageParam } from "@/lib/pagination";
 
 const VALID_STATUSES = ["DRAFT", "OPEN", "CLOSED", "DRAWN"] as const;
 
@@ -27,120 +29,78 @@ export default async function EventsPage({ searchParams }: PageProps) {
 
   const { events, pagination } = await listEvents({ status, search, page });
 
+  const hasFilters = status !== "ALL" || !!search;
+
+  const buildUrl = (p: number) => {
+    const qs = new URLSearchParams();
+    if (status !== "ALL") qs.set("status", status);
+    if (search) qs.set("q", search);
+    if (p > 1) qs.set("page", String(p));
+    const s = qs.toString();
+    return s ? `/events?${s}` : "/events";
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Events</h1>
-          <p className="mt-2 text-muted-foreground">
-            {pagination.total} {pagination.total === 1 ? "event" : "events"}
+    <div className="space-y-8">
+      <PageHeader
+        title="Events"
+        description={
+          <>
+            <span className="font-mono tabular-nums">{pagination.total}</span>{" "}
+            {pagination.total === 1 ? "event" : "events"}
             {status !== "ALL" ? ` · ${status.toLowerCase()}` : ""}
             {search ? ` · matching “${search}”` : ""}
-          </p>
-        </div>
-        <Link href="/events/new" className={buttonVariants()}>
-          New event
-        </Link>
-      </div>
+          </>
+        }
+        actions={
+          <Link href="/events/new" className={buttonVariants()}>
+            New event
+          </Link>
+        }
+      />
 
       <EventsFilters status={status} search={search} />
 
       {events.length === 0 ? (
-        <EmptyState hasFilters={status !== "ALL" || !!search} />
+        <EmptyState
+          title={hasFilters ? "No events match those filters." : "No events yet."}
+          description={
+            hasFilters
+              ? "Try clearing the filters."
+              : "Create your first event to get started."
+          }
+          action={
+            hasFilters ? null : (
+              <Link
+                href="/events/new"
+                className={buttonVariants({ size: "sm" })}
+              >
+                New event
+              </Link>
+            )
+          }
+        />
       ) : (
-        <EventsTable events={events} />
+        <EventsTable
+          events={events.map((e) => ({
+            id: e.id,
+            name: e.name,
+            date: e.date,
+            status: e.status,
+            _count: e._count,
+          }))}
+        />
       )}
 
       {pagination.totalPages > 1 && (
         <Pagination
           page={pagination.page}
           totalPages={pagination.totalPages}
-          status={status}
-          search={search}
           hasPrev={pagination.hasPrev}
           hasNext={pagination.hasNext}
+          buildUrl={buildUrl}
         />
       )}
-    </div>
-  );
-}
-
-function EmptyState({ hasFilters }: { hasFilters: boolean }) {
-  return (
-    <div className="rounded-lg border border-dashed p-12 text-center">
-      <p className="text-base font-medium">
-        {hasFilters ? "No events match those filters." : "No events yet."}
-      </p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {hasFilters
-          ? "Try clearing the filters."
-          : "Create your first event to get started."}
-      </p>
-      {!hasFilters && (
-        <Link
-          href="/events/new"
-          className={buttonVariants({ size: "sm" }) + " mt-4"}
-        >
-          New event
-        </Link>
-      )}
-    </div>
-  );
-}
-
-interface PaginationProps {
-  page: number;
-  totalPages: number;
-  status: EventStatus | "ALL";
-  search: string;
-  hasPrev: boolean;
-  hasNext: boolean;
-}
-
-function Pagination({
-  page,
-  totalPages,
-  status,
-  search,
-  hasPrev,
-  hasNext,
-}: PaginationProps) {
-  const buildUrl = (p: number) => {
-    const params = new URLSearchParams();
-    if (status !== "ALL") params.set("status", status);
-    if (search) params.set("q", search);
-    if (p > 1) params.set("page", String(p));
-    const qs = params.toString();
-    return qs ? `/events?${qs}` : "/events";
-  };
-
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <p className="text-muted-foreground">
-        Page {page} of {totalPages}
-      </p>
-      <div className="flex gap-2">
-        <Link
-          href={buildUrl(page - 1)}
-          className={
-            buttonVariants({ variant: "outline", size: "sm" }) +
-            (hasPrev ? "" : " pointer-events-none opacity-50")
-          }
-          aria-disabled={!hasPrev}
-        >
-          Previous
-        </Link>
-        <Link
-          href={buildUrl(page + 1)}
-          className={
-            buttonVariants({ variant: "outline", size: "sm" }) +
-            (hasNext ? "" : " pointer-events-none opacity-50")
-          }
-          aria-disabled={!hasNext}
-        >
-          Next
-        </Link>
-      </div>
     </div>
   );
 }
