@@ -1,21 +1,66 @@
+import Link from "next/link";
+import { CalendarPlus } from "lucide-react";
+
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/rbac";
 import { RoleGate } from "@/components/auth/RoleGate";
-import { PageHeader, Section, StatCard } from "@/components/shell";
+import { buttonVariants } from "@/components/ui/button";
+import { EmptyState, PageHeader, Section, StatCard } from "@/components/shell";
+import { formatMoney } from "@/lib/money";
+import { OpenEventCard } from "./OpenEventCard";
 
 export default async function DashboardPage() {
   const session = await requireUser();
 
-  const [eventsTotal, eventsOpen, entrantsTotal] = await Promise.all([
+  // All the data the dashboard needs, in parallel. Aggregations stay simple
+  // for now — single-table scans on entries (acceptable at expected volume).
+  const [eventsTotal, openEvents, entrantsTotal, allEntries] = await Promise.all([
     db.event.count(),
-    db.event.count({ where: { status: "OPEN" } }),
+    db.event.findMany({
+      where: { status: "OPEN" },
+      orderBy: [{ date: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        date: true,
+        drawTime: true,
+        entryCost: true,
+        _count: { select: { entries: true, prizes: true } },
+      },
+    }),
     db.entrant.count(),
+    db.entry.findMany({
+      select: {
+        eventId: true,
+        donationAmount: true,
+        package: { select: { cost: true, quantity: true } },
+        event: { select: { entryCost: true } },
+      },
+    }),
   ]);
+
+  // Per-event revenue + lifetime totals. Per-ticket cost = package prorated
+  // when present, else event entryCost; donations always added.
+  const revenueByEvent = new Map<string, number>();
+  let lifetimeRevenue = 0;
+  for (const e of allEntries) {
+    const perTicket = e.package
+      ? Number(e.package.cost) / e.package.quantity
+      : Number(e.event.entryCost);
+    const donation = e.donationAmount ? Number(e.donationAmount) : 0;
+    const contribution = perTicket + donation;
+    revenueByEvent.set(
+      e.eventId,
+      (revenueByEvent.get(e.eventId) ?? 0) + contribution,
+    );
+    lifetimeRevenue += contribution;
+  }
+  const lifetimeTickets = allEntries.length;
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title={`Welcome back`}
+        title="Welcome back"
         description={
           <>
             Signed in as{" "}
@@ -27,20 +72,79 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Stat row — 5 across on lg, 3 on sm, 2 on mobile. Lifetime tickets
+          and revenue are the motivating "running totals" of the platform. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
         <StatCard label="Events" value={eventsTotal} href="/events" />
         <StatCard
           label="Open events"
-          value={eventsOpen}
-          hint={eventsOpen === 0 ? "no live events" : "accepting entries"}
+          value={openEvents.length}
+          hint={
+            openEvents.length === 0 ? "no live events" : "accepting entries"
+          }
         />
         <StatCard label="Entrants" value={entrantsTotal} href="/entrants" />
+        <StatCard
+          label="Tickets sold"
+          value={lifetimeTickets.toLocaleString()}
+          hint="lifetime"
+        />
+        <StatCard
+          label="Raised"
+          value={formatMoney(lifetimeRevenue)}
+          hint="lifetime"
+        />
       </div>
 
-      <RoleGate
-        minimum="SUPERADMIN"
-        fallback={null}
-      >
+      {/* Open events — the dashboard centerpiece during a live event. */}
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-display-2xs font-semibold tracking-tight">
+            Open events
+          </h2>
+          {openEvents.length > 0 && (
+            <Link
+              href="/events?status=OPEN"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              View all →
+            </Link>
+          )}
+        </div>
+
+        {openEvents.length === 0 ? (
+          <EmptyState
+            icon={<CalendarPlus />}
+            title="No events are open right now."
+            description="When you open an event for entries, it'll appear here with quick actions for tablet capture, presentation, and the draw."
+            action={
+              <Link
+                href="/events/new"
+                className={buttonVariants({ size: "sm" })}
+              >
+                Create an event
+              </Link>
+            }
+          />
+        ) : (
+          <div className="space-y-4">
+            {openEvents.map((e) => (
+              <OpenEventCard
+                key={e.id}
+                id={e.id}
+                name={e.name}
+                date={e.date}
+                drawTime={e.drawTime}
+                ticketCount={e._count.entries}
+                revenue={revenueByEvent.get(e.id) ?? 0}
+                prizeCount={e._count.prizes}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <RoleGate minimum="SUPERADMIN" fallback={null}>
         <Section
           title="Superadmin"
           description="Visible because role gating is working."
