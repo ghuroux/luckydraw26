@@ -23,6 +23,11 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { searchEntrants } from "@/lib/actions/entrant";
 import { createEntry } from "@/lib/actions/entry";
+import { formatMoney } from "@/lib/money";
+
+// Soft cap on the typed *individual* qty only — packages aren't counted,
+// since their size is whatever the org configured. Matches tablet flow.
+const MAX_INDIVIDUALS = 500;
 
 interface PackageOption {
   id: string;
@@ -185,7 +190,7 @@ function AddEntryDialog({
     !submitting &&
     (entrantMode === "existing" ? !!selected : isNewEntrantValid(newEntrant)) &&
     totalQty >= 1 &&
-    totalQty <= 100;
+    indivQtyNum <= MAX_INDIVIDUALS;
 
   async function handleSubmit() {
     setError(null);
@@ -295,7 +300,7 @@ function AddEntryDialog({
             <CardContent className="flex items-center justify-between py-3 text-sm">
               <span className="text-muted-foreground">Total</span>
               <span className="text-lg font-semibold tabular-nums">
-                {total.toFixed(2)}
+                {formatMoney(total)}
               </span>
             </CardContent>
           </Card>
@@ -549,7 +554,7 @@ function SelectionSection({
     ...Object.fromEntries(
       packages.map((pkg) => [
         pkg.id,
-        `${pkg.label} — ${pkg.quantity} for ${pkg.cost}`,
+        `${pkg.label} — ${pkg.quantity} for ${formatMoney(pkg.cost)}`,
       ]),
     ),
   };
@@ -571,7 +576,7 @@ function SelectionSection({
               <SelectItem value={NO_PACKAGE}>No package</SelectItem>
               {packages.map((pkg) => (
                 <SelectItem key={pkg.id} value={pkg.id}>
-                  {`${pkg.label} — ${pkg.quantity} for ${pkg.cost}`}
+                  {`${pkg.label} — ${pkg.quantity} for ${formatMoney(pkg.cost)}`}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -588,7 +593,7 @@ function SelectionSection({
             className="w-24"
           />
           <span className="text-sm text-muted-foreground">
-            × {individualRate.toFixed(2)} each
+            × {formatMoney(individualRate)} each
             {isProrated && (
               <span className="ml-1 text-xs">(package rate)</span>
             )}
