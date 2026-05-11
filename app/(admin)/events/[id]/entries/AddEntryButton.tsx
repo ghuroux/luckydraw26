@@ -23,6 +23,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { searchEntrants } from "@/lib/actions/entrant";
 import { createEntry } from "@/lib/actions/entry";
+import { displayEmail } from "@/lib/entrant-contact";
 import { formatMoney } from "@/lib/money";
 
 // Soft cap on the typed *individual* qty only — packages aren't counted,
@@ -406,7 +407,9 @@ function EntrantSection({
                   {selected.firstName} {selected.lastName}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {selected.email}
+                  {displayEmail(selected) ?? (
+                    <span className="italic opacity-70">No email</span>
+                  )}
                 </p>
               </div>
               <Button
@@ -440,7 +443,9 @@ function EntrantSection({
                         {r.firstName} {r.lastName}
                       </span>
                       <span className="ml-2 text-muted-foreground">
-                        {r.email}
+                        {displayEmail(r) ?? (
+                          <span className="italic opacity-70">No email</span>
+                        )}
                       </span>
                     </span>
                     {r.phone && (

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { displayEmail } from "@/lib/entrant-contact";
 import { requireRole } from "@/lib/rbac";
 
 // CSV-quote a single field per RFC 4180: wrap in double quotes if it contains
@@ -38,7 +39,7 @@ export async function GET() {
     [
       csvField(e.firstName),
       csvField(e.lastName),
-      csvField(e.email),
+      csvField(displayEmail(e) ?? ""),
       csvField(e.phone),
       csvField(
         e.dateOfBirth ? new Date(e.dateOfBirth).toISOString().slice(0, 10) : "",

@@ -22,11 +22,18 @@ import {
   updateEntrant,
   type EntrantInput,
 } from "@/lib/actions/entrant";
+import { displayEmail, isPlaceholderEmail } from "@/lib/entrant-contact";
 
 const schema = z.object({
   firstName: z.string().min(1, "First name is required.").max(100),
   lastName: z.string().min(1, "Last name is required.").max(100),
-  email: z.string().email("Invalid email address."),
+  // Allow blank so an entrant with no real email yet (placeholder in DB)
+  // can have other fields edited without forcing the operator to invent one.
+  // On submit we restore the existing placeholder if blank.
+  email: z
+    .string()
+    .email("Invalid email address.")
+    .or(z.literal("")),
   phone: z.string().max(50).optional(),
   dateOfBirth: z.string().optional(),
   sponsorShareOptIn: z.boolean(),
@@ -62,7 +69,12 @@ export function EntrantProfile({ entrant }: Props) {
         }
       >
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-          <Field label="Email" value={entrant.email} mono />
+          <Field
+            label="Email"
+            value={displayEmail(entrant) ?? "—"}
+            mono={!isPlaceholderEmail(entrant.email)}
+            muted={isPlaceholderEmail(entrant.email)}
+          />
           <Field label="Phone" value={entrant.phone || "—"} mono />
           <Field
             label="Date of birth"
@@ -99,17 +111,23 @@ function Field({
   label,
   value,
   mono,
+  muted,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  muted?: boolean;
 }) {
   return (
     <div>
       <dt className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </dt>
-      <dd className={`mt-1 text-foreground${mono ? " font-mono" : ""}`}>
+      <dd
+        className={`mt-1${mono ? " font-mono" : ""}${
+          muted ? " text-muted-foreground italic" : " text-foreground"
+        }`}
+      >
         {value}
       </dd>
     </div>
@@ -136,7 +154,7 @@ function EditDialog({ open, onOpenChange, entrant }: EditDialogProps) {
     values: {
       firstName: entrant.firstName,
       lastName: entrant.lastName,
-      email: entrant.email,
+      email: isPlaceholderEmail(entrant.email) ? "" : entrant.email,
       phone: entrant.phone,
       dateOfBirth: entrant.dateOfBirth,
       sponsorShareOptIn: entrant.sponsorShareOptIn,
@@ -146,7 +164,13 @@ function EditDialog({ open, onOpenChange, entrant }: EditDialogProps) {
 
   async function onSubmit(values: FormValues) {
     setServerError(null);
-    const result = await updateEntrant(entrant.id, values as EntrantInput);
+    // Empty email means "leave it alone" — keep the existing (possibly
+    // placeholder) address rather than rejecting the form.
+    const payload: EntrantInput = {
+      ...values,
+      email: values.email.trim() || entrant.email,
+    } as EntrantInput;
+    const result = await updateEntrant(entrant.id, payload);
     if (!result.ok) {
       setServerError(result.error);
       return;

@@ -9,6 +9,16 @@ export function isPlaceholderEmail(email: string): boolean {
   return email.trim().toLowerCase().endsWith(".placeholder");
 }
 
+/**
+ * The email to surface in the admin UI / exports. Returns null when the
+ * stored email is a placeholder so callers can render their own "no email"
+ * affordance (muted hint, blank CSV cell, etc.) rather than leak a fake
+ * address that would bounce if anyone tried to use it.
+ */
+export function displayEmail(entrant: { email: string }): string | null {
+  return isPlaceholderEmail(entrant.email) ? null : entrant.email;
+}
+
 /** True when the email on file is a placeholder, i.e. we don't have a real one. */
 export function missingEmail(entrant: { email: string }): boolean {
   return isPlaceholderEmail(entrant.email);

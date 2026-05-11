@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { displayEmail } from "@/lib/entrant-contact";
 
 export interface EntrantRow {
   id: string;
@@ -57,7 +58,9 @@ export function EntrantsTable({ entrants }: { entrants: EntrantRow[] }) {
                   </Link>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {entrant.email}
+                  {displayEmail(entrant) ?? (
+                    <span className="italic opacity-70">No email</span>
+                  )}
                 </TableCell>
                 <TableCell className="font-mono text-muted-foreground tabular-nums">
                   {entrant.phone ?? "—"}
