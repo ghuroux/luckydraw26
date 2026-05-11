@@ -3,10 +3,10 @@ import { CalendarPlus } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/rbac";
-import { RoleGate } from "@/components/auth/RoleGate";
 import { buttonVariants } from "@/components/ui/button";
-import { EmptyState, PageHeader, Section, StatCard } from "@/components/shell";
+import { EmptyState, PageHeader, StatCard } from "@/components/shell";
 import { formatMoney } from "@/lib/money";
+import { NeedsAttentionPanel } from "./NeedsAttentionPanel";
 import { OpenEventCard } from "./OpenEventCard";
 
 export default async function DashboardPage() {
@@ -14,7 +14,14 @@ export default async function DashboardPage() {
 
   // All the data the dashboard needs, in parallel. Aggregations stay simple
   // for now — single-table scans on entries (acceptable at expected volume).
-  const [eventsTotal, openEvents, entrantsTotal, allEntries] = await Promise.all([
+  const [
+    eventsTotal,
+    openEvents,
+    entrantsTotal,
+    allEntries,
+    parkedWinners,
+    draftsReady,
+  ] = await Promise.all([
     db.event.count(),
     db.event.findMany({
       where: { status: "OPEN" },
@@ -35,6 +42,30 @@ export default async function DashboardPage() {
         donationAmount: true,
         package: { select: { cost: true, quantity: true } },
         event: { select: { entryCost: true } },
+      },
+    }),
+    // Parked winners across all events — drawn but awaiting prize assignment.
+    db.entry.findMany({
+      where: { wonAt: { not: null } },
+      orderBy: { wonAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        ticketNumber: true,
+        wonAt: true,
+        entrant: { select: { firstName: true, lastName: true } },
+        event: { select: { id: true, name: true } },
+      },
+    }),
+    // DRAFT events that already have prizes — ready to be opened.
+    db.event.findMany({
+      where: { status: "DRAFT", prizes: { some: {} } },
+      orderBy: [{ date: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        date: true,
+        _count: { select: { prizes: true, entries: true } },
       },
     }),
   ]);
@@ -144,16 +175,26 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      <RoleGate minimum="SUPERADMIN" fallback={null}>
-        <Section
-          title="Superadmin"
-          description="Visible because role gating is working."
-        >
-          <p className="text-sm text-muted-foreground">
-            Organisation-level controls land here as the platform grows.
-          </p>
-        </Section>
-      </RoleGate>
+      {/* Needs attention — actionable items, self-hiding when there are none.
+          Sits at the bottom so urgent items still get attention but don't
+          dominate the dashboard when the day is quiet. */}
+      <NeedsAttentionPanel
+        parkedWinners={parkedWinners.map((p) => ({
+          entryId: p.id,
+          ticketNumber: p.ticketNumber,
+          entrantName: `${p.entrant.firstName} ${p.entrant.lastName}`,
+          wonAt: p.wonAt!,
+          eventId: p.event.id,
+          eventName: p.event.name,
+        }))}
+        draftsReady={draftsReady.map((d) => ({
+          id: d.id,
+          name: d.name,
+          date: d.date,
+          prizeCount: d._count.prizes,
+          entryCount: d._count.entries,
+        }))}
+      />
     </div>
   );
 }
