@@ -19,7 +19,7 @@ export default async function TabletCaptureLayout({
 
   return (
     <div
-      className="flex min-h-screen flex-col bg-background text-foreground"
+      className="flex h-[100dvh] flex-col bg-background text-foreground"
       style={themeStyle}
     >
       {children}

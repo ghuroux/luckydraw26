@@ -250,7 +250,7 @@ export function EntrantStep({
     view.kind !== "searching" && !captureSubmitting && captureGate;
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col min-h-0">
       <div className="flex-1 overflow-y-auto px-8 py-10">
         <div className="mx-auto w-full max-w-2xl space-y-6">
           <div>

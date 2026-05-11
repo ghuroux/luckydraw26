@@ -107,7 +107,7 @@ export function SelectionStep({
   }
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col min-h-0">
       <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8">
         <div className="mx-auto w-full max-w-3xl space-y-5 sm:space-y-6">
           <div>

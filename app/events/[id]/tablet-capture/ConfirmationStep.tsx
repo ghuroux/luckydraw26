@@ -35,7 +35,7 @@ export function ConfirmationStep({
   const ticketCount = payload.ticketNumbers.length;
 
   return (
-    <div className="relative flex flex-1 flex-col">
+    <div className="relative flex flex-1 flex-col min-h-0">
       {/* Soft success backdrop — primary tint behind the icon */}
       <div
         aria-hidden

@@ -100,12 +100,12 @@ export function TabletFlow({
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-[100dvh] flex-col overflow-hidden">
       {step !== "landing" && (
         <StepHeader current={step} onCancel={goLanding} />
       )}
-      <main className="flex flex-1 flex-col">
-        <div key={step} className="flex flex-1 flex-col animate-enter-step">
+      <main className="flex flex-1 flex-col min-h-0">
+        <div key={step} className="flex flex-1 flex-col min-h-0 animate-enter-step">
           {step === "landing" && (
             <LandingStep
               event={event}
