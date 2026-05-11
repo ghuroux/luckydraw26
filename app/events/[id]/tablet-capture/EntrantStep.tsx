@@ -15,7 +15,12 @@ import {
   captureEntrantContact,
   searchEntrants,
 } from "@/lib/actions/entrant";
-import { isPlaceholderEmail, needsContactCapture } from "@/lib/entrant-contact";
+import {
+  isPlaceholderEmail,
+  missingEmail,
+  missingPhone,
+  needsContactCapture,
+} from "@/lib/entrant-contact";
 
 export type EntrantSelection =
   | {
@@ -159,34 +164,34 @@ export function EntrantStep({
     setCaptureError(null);
   }
 
-  // Email validator that allows blank (since only ONE of email/phone is
-  // required) but rejects malformed addresses. Mirrors the server's refine.
+  // Each field validates as: blank (allowed unless this is the hard-gate
+  // case) OR well-formed. Mirrors the server's refine.
   const emailLooksValid =
     captureEmail.trim() === "" || /^\S+@\S+\.\S+$/.test(captureEmail.trim());
-  const phoneLooksValid = capturePhone.trim().length >= 5;
-  const captureSatisfied =
-    (captureEmail.trim() !== "" && emailLooksValid) || phoneLooksValid;
+  const phoneLooksValid =
+    capturePhone.trim() === "" || capturePhone.trim().length >= 5;
+  const anyCaptureInput =
+    captureEmail.trim() !== "" || capturePhone.trim() !== "";
 
   async function submit() {
     if (view.kind === "selected") {
-      const needsCapture = needsContactCapture(view.match);
+      const hardCapture = needsContactCapture(view.match);
 
       // Hard block: an entrant with no real contact route can't buy until
       // the operator captures at least one. UI gating mirrors this, but the
       // belt-and-braces guard keeps the contract clear.
-      if (needsCapture && !captureSatisfied) {
+      if (hardCapture && !anyCaptureInput) {
         setCaptureError(
           "Add a mobile number or email before continuing.",
         );
         return;
       }
 
-      // Persist the captured contact info back to the Entrant so we don't
-      // ask again next time. Fire-and-forget would be ergonomic but we want
-      // to surface errors (e.g. email already used by another entrant).
+      // Persist whatever the operator typed (soft or hard case). Skip the
+      // round-trip entirely if nothing was entered.
       let nextEmail = view.match.email;
       let nextPhone = view.match.phone;
-      if (needsCapture) {
+      if (anyCaptureInput) {
         setCaptureSubmitting(true);
         const result = await captureEntrantContact(view.match.id, {
           email: captureEmail.trim() || undefined,
@@ -228,12 +233,21 @@ export function EntrantStep({
     // view.kind === "searching" — nothing selected yet; do nothing.
   }
 
-  const selectedNeedsCapture =
-    view.kind === "selected" && needsContactCapture(view.match);
+  const selectedMissingEmail =
+    view.kind === "selected" && missingEmail(view.match);
+  const selectedMissingPhone =
+    view.kind === "selected" && missingPhone(view.match);
+  const selectedHardCapture = selectedMissingEmail && selectedMissingPhone;
+  const selectedSoftCapture =
+    !selectedHardCapture && (selectedMissingEmail || selectedMissingPhone);
+  // Hard case: must have at least one valid value. Soft case: whatever's
+  // typed must be valid, but nothing is required.
+  const captureGate = selectedHardCapture
+    ? (captureEmail.trim() !== "" && emailLooksValid) ||
+      (capturePhone.trim() !== "" && phoneLooksValid)
+    : emailLooksValid && phoneLooksValid;
   const canSubmit =
-    view.kind !== "searching" &&
-    !captureSubmitting &&
-    (!selectedNeedsCapture || captureSatisfied);
+    view.kind !== "searching" && !captureSubmitting && captureGate;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -267,7 +281,10 @@ export function EntrantStep({
             <WelcomeBack
               match={view.match}
               onChange={backToSearch}
-              needsCapture={selectedNeedsCapture}
+              missingEmail={selectedMissingEmail}
+              missingPhone={selectedMissingPhone}
+              hardCapture={selectedHardCapture}
+              softCapture={selectedSoftCapture}
               captureEmail={captureEmail}
               capturePhone={capturePhone}
               onCaptureEmailChange={(v) => {
@@ -280,6 +297,7 @@ export function EntrantStep({
               }}
               captureError={captureError}
               emailLooksValid={emailLooksValid}
+              phoneLooksValid={phoneLooksValid}
             />
           )}
 
@@ -427,24 +445,33 @@ function SearchView({
 function WelcomeBack({
   match,
   onChange,
-  needsCapture,
+  missingEmail,
+  missingPhone,
+  hardCapture,
+  softCapture,
   captureEmail,
   capturePhone,
   onCaptureEmailChange,
   onCapturePhoneChange,
   captureError,
   emailLooksValid,
+  phoneLooksValid,
 }: {
   match: SearchHit;
   onChange: () => void;
-  needsCapture: boolean;
+  missingEmail: boolean;
+  missingPhone: boolean;
+  hardCapture: boolean;
+  softCapture: boolean;
   captureEmail: string;
   capturePhone: string;
   onCaptureEmailChange: (v: string) => void;
   onCapturePhoneChange: (v: string) => void;
   captureError: string | null;
   emailLooksValid: boolean;
+  phoneLooksValid: boolean;
 }) {
+  const showCaptureBlock = hardCapture || softCapture;
   return (
     <div className="rounded-lg border bg-primary/5 p-6">
       <div className="flex items-start justify-between gap-4">
@@ -455,17 +482,15 @@ function WelcomeBack({
           <p className="mt-2 truncate text-2xl font-semibold tracking-tight">
             {match.firstName} {match.lastName}
           </p>
-          {!needsCapture && (
-            <>
-              <p className="mt-1 truncate text-base text-muted-foreground">
-                {match.email}
-              </p>
-              {match.phone && (
-                <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                  {match.phone}
-                </p>
-              )}
-            </>
+          {!missingEmail && (
+            <p className="mt-1 truncate text-base text-muted-foreground">
+              {match.email}
+            </p>
+          )}
+          {!missingPhone && match.phone && (
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+              {match.phone}
+            </p>
           )}
         </div>
         <Button
@@ -479,7 +504,7 @@ function WelcomeBack({
         </Button>
       </div>
 
-      {needsCapture && (
+      {showCaptureBlock && (
         <div className="mt-5 space-y-4 border-t border-primary/20 pt-5">
           <div className="flex items-start gap-2.5 text-sm">
             <AlertCircle
@@ -487,60 +512,91 @@ function WelcomeBack({
               aria-hidden
             />
             <p>
-              We don&apos;t have a way to reach{" "}
-              <span className="font-medium">{match.firstName}</span> if they
-              win. Capture a mobile number (preferred) or email to continue.
+              {hardCapture ? (
+                <>
+                  We don&apos;t have a way to reach{" "}
+                  <span className="font-medium">{match.firstName}</span> if they
+                  win. Capture a mobile number (preferred) or email to continue.
+                </>
+              ) : missingEmail ? (
+                <>
+                  We&apos;ve got{" "}
+                  <span className="font-medium">{match.firstName}</span>&apos;s
+                  mobile — got an email too? We&apos;ll save it for next time.
+                  (Optional)
+                </>
+              ) : (
+                <>
+                  We&apos;ve got{" "}
+                  <span className="font-medium">{match.firstName}</span>&apos;s
+                  email — got a mobile too? We&apos;ll save it for next time.
+                  (Optional)
+                </>
+              )}
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="capture-phone" className="text-base">
-                Mobile number
-              </Label>
-              <Input
-                id="capture-phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="+27 …"
-                value={capturePhone}
-                onChange={(e) => onCapturePhoneChange(e.target.value)}
-                className="h-14 text-lg"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="capture-email" className="text-base">
-                Email{" "}
-                <span className="text-xs font-normal text-muted-foreground">
-                  (optional if phone given)
-                </span>
-              </Label>
-              <Input
-                id="capture-email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-                placeholder="name@example.com"
-                value={captureEmail}
-                onChange={(e) => onCaptureEmailChange(e.target.value)}
-                className={cn(
-                  "h-14 text-lg",
-                  !emailLooksValid &&
-                    "border-destructive focus-visible:ring-destructive/40",
-                )}
-              />
-            </div>
+            {missingPhone && (
+              <div className="space-y-1.5">
+                <Label htmlFor="capture-phone" className="text-base">
+                  Mobile number
+                </Label>
+                <Input
+                  id="capture-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="+27 …"
+                  value={capturePhone}
+                  onChange={(e) => onCapturePhoneChange(e.target.value)}
+                  className={cn(
+                    "h-14 text-lg",
+                    !phoneLooksValid &&
+                      "border-destructive focus-visible:ring-destructive/40",
+                  )}
+                />
+              </div>
+            )}
+            {missingEmail && (
+              <div className="space-y-1.5">
+                <Label htmlFor="capture-email" className="text-base">
+                  Email
+                  {hardCapture && (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {" "}
+                      (optional if phone given)
+                    </span>
+                  )}
+                </Label>
+                <Input
+                  id="capture-email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="name@example.com"
+                  value={captureEmail}
+                  onChange={(e) => onCaptureEmailChange(e.target.value)}
+                  className={cn(
+                    "h-14 text-lg",
+                    !emailLooksValid &&
+                      "border-destructive focus-visible:ring-destructive/40",
+                  )}
+                />
+              </div>
+            )}
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            One of these is required. We&apos;ll save it to{" "}
-            <span className="font-medium">{match.firstName}</span>&apos;s
-            record so we don&apos;t need to ask again.
-          </p>
+          {hardCapture && (
+            <p className="text-xs text-muted-foreground">
+              One of these is required. We&apos;ll save it to{" "}
+              <span className="font-medium">{match.firstName}</span>&apos;s
+              record so we don&apos;t need to ask again.
+            </p>
+          )}
 
           {captureError && (
             <p className="rounded-md bg-destructive/10 p-2.5 text-sm text-destructive">

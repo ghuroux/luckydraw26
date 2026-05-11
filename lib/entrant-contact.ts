@@ -9,14 +9,25 @@ export function isPlaceholderEmail(email: string): boolean {
   return email.trim().toLowerCase().endsWith(".placeholder");
 }
 
+/** True when the email on file is a placeholder, i.e. we don't have a real one. */
+export function missingEmail(entrant: { email: string }): boolean {
+  return isPlaceholderEmail(entrant.email);
+}
+
+/** True when no phone is on file. */
+export function missingPhone(entrant: { phone: string | null }): boolean {
+  return !entrant.phone?.trim();
+}
+
 /**
  * True when an entrant has no real way to be contacted — placeholder email
- * AND no phone number. We need to capture at least one before they can buy
- * a ticket (otherwise we can't notify them if they win).
+ * AND no phone number. Hard gate: must capture at least one before they can
+ * buy a ticket. When only one channel is missing we still soft-prompt for
+ * the other but don't block.
  */
 export function needsContactCapture(entrant: {
   email: string;
   phone: string | null;
 }): boolean {
-  return isPlaceholderEmail(entrant.email) && !entrant.phone?.trim();
+  return missingEmail(entrant) && missingPhone(entrant);
 }
