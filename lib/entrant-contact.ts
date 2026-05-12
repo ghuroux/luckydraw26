@@ -30,14 +30,14 @@ export function missingPhone(entrant: { phone: string | null }): boolean {
 }
 
 /**
- * True when an entrant has no real way to be contacted — placeholder email
- * AND no phone number. Hard gate: must capture at least one before they can
- * buy a ticket. When only one channel is missing we still soft-prompt for
- * the other but don't block.
+ * True when an entrant is missing EITHER a real email or a phone. Hard gate:
+ * post-demo feedback requires both channels on file before a ticket sale
+ * can proceed on the tablet, so any missing channel blocks Next until
+ * captured.
  */
 export function needsContactCapture(entrant: {
   email: string;
   phone: string | null;
 }): boolean {
-  return missingEmail(entrant) && missingPhone(entrant);
+  return missingEmail(entrant) || missingPhone(entrant);
 }

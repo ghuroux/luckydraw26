@@ -58,7 +58,7 @@ const newEntrantSchema = z.object({
   firstName: z.string().min(1, "First name is required.").max(100),
   lastName: z.string().min(1, "Last name is required.").max(100),
   email: z.string().email("Enter a valid email address."),
-  phone: z.string().max(50),
+  phone: z.string().min(5, "Mobile number is required.").max(50),
   sponsorShareOptIn: z.boolean(),
   smsOptIn: z.boolean(),
 });
@@ -164,8 +164,8 @@ export function EntrantStep({
     setCaptureError(null);
   }
 
-  // Each field validates as: blank (allowed unless this is the hard-gate
-  // case) OR well-formed. Mirrors the server's refine.
+  // Each field validates as well-formed when non-empty. The gate logic
+  // below decides whether non-empty is required.
   const emailLooksValid =
     captureEmail.trim() === "" || /^\S+@\S+\.\S+$/.test(captureEmail.trim());
   const phoneLooksValid =
@@ -175,20 +175,30 @@ export function EntrantStep({
 
   async function submit() {
     if (view.kind === "selected") {
-      const hardCapture = needsContactCapture(view.match);
+      const needsEmail = missingEmail(view.match);
+      const needsPhone = missingPhone(view.match);
 
-      // Hard block: an entrant with no real contact route can't buy until
-      // the operator captures at least one. UI gating mirrors this, but the
-      // belt-and-braces guard keeps the contract clear.
-      if (hardCapture && !anyCaptureInput) {
+      // Hard gate (post-demo): every missing channel must be captured
+      // before the ticket sale can proceed.
+      const emailOk =
+        !needsEmail ||
+        (captureEmail.trim() !== "" &&
+          /^\S+@\S+\.\S+$/.test(captureEmail.trim()));
+      const phoneOk =
+        !needsPhone || capturePhone.trim().length >= 5;
+      if (!emailOk || !phoneOk) {
         setCaptureError(
-          "Add a mobile number or email before continuing.",
+          needsEmail && needsPhone
+            ? "Capture a mobile number and email before continuing."
+            : needsEmail
+              ? "Capture an email before continuing."
+              : "Capture a mobile number before continuing.",
         );
         return;
       }
 
-      // Persist whatever the operator typed (soft or hard case). Skip the
-      // round-trip entirely if nothing was entered.
+      // Persist whatever the operator typed. Skip the round-trip entirely
+      // if nothing was entered (entrant already had both real channels).
       let nextEmail = view.match.email;
       let nextPhone = view.match.phone;
       if (anyCaptureInput) {
@@ -237,15 +247,14 @@ export function EntrantStep({
     view.kind === "selected" && missingEmail(view.match);
   const selectedMissingPhone =
     view.kind === "selected" && missingPhone(view.match);
-  const selectedHardCapture = selectedMissingEmail && selectedMissingPhone;
-  const selectedSoftCapture =
-    !selectedHardCapture && (selectedMissingEmail || selectedMissingPhone);
-  // Hard case: must have at least one valid value. Soft case: whatever's
-  // typed must be valid, but nothing is required.
-  const captureGate = selectedHardCapture
-    ? (captureEmail.trim() !== "" && emailLooksValid) ||
-      (capturePhone.trim() !== "" && phoneLooksValid)
-    : emailLooksValid && phoneLooksValid;
+  const selectedNeedsCapture =
+    selectedMissingEmail || selectedMissingPhone;
+  // Every missing channel must be supplied + valid before Next enables.
+  const captureGate =
+    (!selectedMissingEmail ||
+      (captureEmail.trim() !== "" && emailLooksValid)) &&
+    (!selectedMissingPhone ||
+      (capturePhone.trim() !== "" && phoneLooksValid));
   const canSubmit =
     view.kind !== "searching" && !captureSubmitting && captureGate;
 
@@ -283,8 +292,7 @@ export function EntrantStep({
               onChange={backToSearch}
               missingEmail={selectedMissingEmail}
               missingPhone={selectedMissingPhone}
-              hardCapture={selectedHardCapture}
-              softCapture={selectedSoftCapture}
+              needsCapture={selectedNeedsCapture}
               captureEmail={captureEmail}
               capturePhone={capturePhone}
               onCaptureEmailChange={(v) => {
@@ -447,8 +455,7 @@ function WelcomeBack({
   onChange,
   missingEmail,
   missingPhone,
-  hardCapture,
-  softCapture,
+  needsCapture,
   captureEmail,
   capturePhone,
   onCaptureEmailChange,
@@ -461,8 +468,7 @@ function WelcomeBack({
   onChange: () => void;
   missingEmail: boolean;
   missingPhone: boolean;
-  hardCapture: boolean;
-  softCapture: boolean;
+  needsCapture: boolean;
   captureEmail: string;
   capturePhone: string;
   onCaptureEmailChange: (v: string) => void;
@@ -471,7 +477,7 @@ function WelcomeBack({
   emailLooksValid: boolean;
   phoneLooksValid: boolean;
 }) {
-  const showCaptureBlock = hardCapture || softCapture;
+  const bothMissing = missingEmail && missingPhone;
   return (
     <div className="rounded-lg border bg-primary/5 p-6">
       <div className="flex items-start justify-between gap-4">
@@ -504,7 +510,7 @@ function WelcomeBack({
         </Button>
       </div>
 
-      {showCaptureBlock && (
+      {needsCapture && (
         <div className="mt-5 space-y-4 border-t border-primary/20 pt-5">
           <div className="flex items-start gap-2.5 text-sm">
             <AlertCircle
@@ -512,25 +518,23 @@ function WelcomeBack({
               aria-hidden
             />
             <p>
-              {hardCapture ? (
+              {bothMissing ? (
                 <>
                   We don&apos;t have a way to reach{" "}
                   <span className="font-medium">{match.firstName}</span> if they
-                  win. Capture a mobile number (preferred) or email to continue.
+                  win. Capture a mobile number and email to continue.
                 </>
               ) : missingEmail ? (
                 <>
                   We&apos;ve got{" "}
                   <span className="font-medium">{match.firstName}</span>&apos;s
-                  mobile — got an email too? We&apos;ll save it for next time.
-                  (Optional)
+                  mobile — capture their email to continue.
                 </>
               ) : (
                 <>
                   We&apos;ve got{" "}
                   <span className="font-medium">{match.firstName}</span>&apos;s
-                  email — got a mobile too? We&apos;ll save it for next time.
-                  (Optional)
+                  email — capture their mobile number to continue.
                 </>
               )}
             </p>
@@ -562,12 +566,6 @@ function WelcomeBack({
               <div className="space-y-1.5">
                 <Label htmlFor="capture-email" className="text-base">
                   Email
-                  {hardCapture && (
-                    <span className="text-xs font-normal text-muted-foreground">
-                      {" "}
-                      (optional if phone given)
-                    </span>
-                  )}
                 </Label>
                 <Input
                   id="capture-email"
@@ -590,13 +588,11 @@ function WelcomeBack({
             )}
           </div>
 
-          {hardCapture && (
-            <p className="text-xs text-muted-foreground">
-              One of these is required. We&apos;ll save it to{" "}
-              <span className="font-medium">{match.firstName}</span>&apos;s
-              record so we don&apos;t need to ask again.
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground">
+            We&apos;ll save{bothMissing ? " them " : " it "}to{" "}
+            <span className="font-medium">{match.firstName}</span>&apos;s
+            record so we don&apos;t need to ask again.
+          </p>
 
           {captureError && (
             <p className="rounded-md bg-destructive/10 p-2.5 text-sm text-destructive">
