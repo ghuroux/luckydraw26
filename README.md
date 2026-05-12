@@ -4,6 +4,8 @@ A monthly charity lucky draw application.
 
 The full build contract for this project lives in [`V2_SPEC.md`](./V2_SPEC.md). Read that before changing anything significant — it covers goals, data model, every feature, the API surface, deployment, and the phased build plan.
 
+New to the repo? [`CONTRIBUTING.md`](./CONTRIBUTING.md) has the dev-environment setup.
+
 ## Status
 
 Phases 0–3 complete; Phase 4 (email) and adjacent hardening work in progress.
