@@ -26,10 +26,6 @@ import { createEntry } from "@/lib/actions/entry";
 import { displayEmail } from "@/lib/entrant-contact";
 import { formatMoney } from "@/lib/money";
 
-// Soft cap on the typed *individual* qty only — packages aren't counted,
-// since their size is whatever the org configured. Matches tablet flow.
-const MAX_INDIVIDUALS = 500;
-
 interface PackageOption {
   id: string;
   label: string;
@@ -190,8 +186,7 @@ function AddEntryDialog({
   const canSubmit =
     !submitting &&
     (entrantMode === "existing" ? !!selected : isNewEntrantValid(newEntrant)) &&
-    totalQty >= 1 &&
-    indivQtyNum <= MAX_INDIVIDUALS;
+    totalQty >= 1;
 
   async function handleSubmit() {
     setError(null);

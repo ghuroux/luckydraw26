@@ -14,11 +14,6 @@ export type TicketSelection = {
 };
 
 const DONATION_REGEX = /^\d+(\.\d{1,2})?$/;
-// Soft cap on *individual* tickets only — packages can be any size the org
-// configures. The cap exists so an operator can't fat-finger 500 with the
-// stepper buttons; the package quantity is whatever the org defined and
-// isn't artificially limited here.
-const MAX_INDIVIDUALS = 500;
 
 const TAP =
   "select-none [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
@@ -53,7 +48,6 @@ export function SelectionStep({
     : null;
   const pkgQty = selectedPkg?.quantity ?? 0;
   const totalQty = pkgQty + individualQty;
-  const individualRemaining = MAX_INDIVIDUALS - individualQty;
 
   // When a package is selected, "extra" individual tickets ride at the
   // package's prorated per-ticket rate. Without a package, individuals fall
@@ -92,7 +86,6 @@ export function SelectionStep({
     setIndividualQty((q) => {
       const next = q + delta;
       if (next < 0) return 0;
-      if (next > MAX_INDIVIDUALS) return MAX_INDIVIDUALS;
       return next;
     });
   }
@@ -172,18 +165,9 @@ export function SelectionStep({
             rate={individualRate}
             isProrated={selectedPkg !== null}
             quantity={individualQty}
-            atCap={individualQty >= MAX_INDIVIDUALS}
+            atCap={false}
             onBump={bumpQuantity}
           />
-
-          {individualRemaining < 10 && individualQty > 0 && (
-            <p className="text-sm text-muted-foreground">
-              Maximum {MAX_INDIVIDUALS} individual tickets per transaction
-              {individualQty === MAX_INDIVIDUALS
-                ? " (reached)."
-                : `, ${individualRemaining} left.`}
-            </p>
-          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="donation" className="text-sm sm:text-base">

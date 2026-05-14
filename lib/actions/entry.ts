@@ -36,7 +36,7 @@ const createEntrySchema = z
     selection: z
       .object({
         packageId: z.string().min(1).optional(),
-        individualQty: z.number().int().min(0).max(100).optional(),
+        individualQty: z.number().int().min(0).optional(),
       })
       .refine((s) => !!s.packageId || (s.individualQty ?? 0) > 0, {
         message: "Pick a package or set a quantity.",
@@ -323,9 +323,6 @@ export async function createEntry(
   const totalQty = pkgQty + individualQty;
   if (totalQty < 1) {
     return { ok: false, error: "Pick a package or set a quantity." };
-  }
-  if (totalQty > 100) {
-    return { ok: false, error: "Maximum 100 entries per transaction." };
   }
 
   // Resolve entrant: lookup existing or create new.
