@@ -28,11 +28,33 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
   const { entrants } = await listEntrantSummariesForEvent({ eventId: id });
 
+  // Locked prizes → winning entrant. One entrant can win multiple prizes
+  // (multiple winning entries), so accumulate into a per-entrant list.
+  const lockedPrizes = await db.prize.findMany({
+    where: { eventId: id, lockedAt: { not: null }, winningEntryId: { not: null } },
+    orderBy: { order: "asc" },
+    select: {
+      name: true,
+      winningEntry: { select: { entrantId: true } },
+    },
+  });
+  const winnersByEntrant = new Map<string, string[]>();
+  for (const p of lockedPrizes) {
+    const entrantId = p.winningEntry?.entrantId;
+    if (!entrantId) continue;
+    const list = winnersByEntrant.get(entrantId) ?? [];
+    list.push(p.name);
+    winnersByEntrant.set(entrantId, list);
+  }
+  const hasAnyWinners = winnersByEntrant.size > 0;
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Lucky Draw";
   workbook.created = new Date();
   const sheet = workbook.addWorksheet("Entrants");
 
+  // Only include the Winner column when at least one prize has been locked
+  // — otherwise it's an empty column that confuses the organiser.
   sheet.columns = [
     { header: "First name", key: "firstName", width: 18 },
     { header: "Last name", key: "lastName", width: 22 },
@@ -44,6 +66,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
     { header: "Status", key: "status", width: 12 },
     { header: "Total spend", key: "total", width: 14 },
     { header: "Donation", key: "donation", width: 14 },
+    ...(hasAnyWinners
+      ? [{ header: "Winner", key: "winner", width: 32 }]
+      : []),
   ];
 
   // Header row styling: bold + light fill + bottom border. Keeps the
@@ -66,6 +91,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         : e.paidCount === 0
           ? "Unpaid"
           : "Partial";
+    const winnerPrizes = winnersByEntrant.get(e.entrant.id);
     sheet.addRow({
       firstName: e.entrant.firstName,
       lastName: e.entrant.lastName,
@@ -77,6 +103,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
       status,
       total: e.totalSpend,
       donation: e.donationTotal,
+      ...(hasAnyWinners
+        ? { winner: winnerPrizes ? winnerPrizes.join("; ") : "" }
+        : {}),
     });
   }
 
