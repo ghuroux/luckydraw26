@@ -1,10 +1,13 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Download } from "lucide-react";
 import type { EntrySource } from "@prisma/client";
 
 import { getEvent } from "@/lib/actions/event";
 import { listEntrantSummariesForEvent } from "@/lib/actions/entry";
 import { listPackages } from "@/lib/actions/package";
 import { EmptyState } from "@/components/shell";
+import { buttonVariants } from "@/components/ui/button";
 import { AddEntryButton } from "./AddEntryButton";
 import { EntriesFilters } from "./EntriesFilters";
 import { EntrantEntriesTable } from "./EntrantEntriesTable";
@@ -45,6 +48,8 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
   const activePackages = allPackages.filter((p) => p.isActive);
 
   const canAdd = event.status === "OPEN";
+  const canExport =
+    event.status === "CLOSED" || event.status === "DRAWN";
   const hasFilters = paidFilter !== "ALL" || source !== "ALL";
 
   const totalTickets = entrants.reduce((sum, e) => sum + e.ticketCount, 0);
@@ -73,18 +78,30 @@ export default async function EntriesPage({ params, searchParams }: PageProps) {
             {source !== "ALL" ? ` · via ${source.toLowerCase()}` : ""}
           </p>
         </div>
-        {canAdd && (
-          <AddEntryButton
-            eventId={event.id}
-            entryCost={String(event.entryCost)}
-            packages={activePackages.map((p) => ({
-              id: p.id,
-              label: p.label,
-              quantity: p.quantity,
-              cost: String(p.cost),
-            }))}
-          />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canExport && (
+            <Link
+              href={`/api/events/${event.id}/entries/export`}
+              className={buttonVariants({ variant: "outline" })}
+              prefetch={false}
+            >
+              <Download data-icon="inline-start" />
+              Download Excel
+            </Link>
+          )}
+          {canAdd && (
+            <AddEntryButton
+              eventId={event.id}
+              entryCost={String(event.entryCost)}
+              packages={activePackages.map((p) => ({
+                id: p.id,
+                label: p.label,
+                quantity: p.quantity,
+                cost: String(p.cost),
+              }))}
+            />
+          )}
+        </div>
       </div>
 
       <EntriesFilters
